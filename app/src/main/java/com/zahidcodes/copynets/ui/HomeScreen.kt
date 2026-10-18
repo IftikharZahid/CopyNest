@@ -57,7 +57,7 @@ fun HomeScreen(
                             modifier = Modifier.size(34.dp)
                         ) {
                             Image(
-                                painter = painterResource(id = R.mipmap.ic_launcher),
+                                painter = painterResource(id = R.drawable.ic_launcher_foreground),
                                 contentDescription = "App Logo",
                                 modifier = Modifier
                                     .fillMaxSize()
