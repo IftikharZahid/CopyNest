@@ -52,23 +52,31 @@ fun HomeScreen(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             color = MaterialTheme.colorScheme.primaryContainer,
-                            modifier = Modifier.size(34.dp)
+                            shadowElevation = 2.dp,
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Image(
-                                painter = painterResource(id = R.drawable.ic_app_logo),
+                                painter = painterResource(id = R.drawable.app_logo),
                                 contentDescription = "App Logo",
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(4.dp)
+                                    .padding(2.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "CopyNest",
-                            style = MaterialTheme.typography.titleLarge.copy(fontFamily = FontFamily.Default)
-                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column {
+                            Text(
+                                text = "CopyNets",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                            Text(
+                                text = "Smart Clipboard & Notes",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
                     }
                 },
                 actions = {
@@ -104,31 +112,54 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(6.dp))
 
             Spacer(modifier = Modifier.height(2.dp))
-            // Compact Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.setSearchQuery(it) },
-                placeholder = { Text("Search your clips and notes...", style = MaterialTheme.typography.bodySmall) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.setSearchQuery("") }, modifier = Modifier.size(20.dp)) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear search", modifier = Modifier.size(14.dp))
+            // Ultra-compact Search Bar & Paste Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { viewModel.setSearchQuery(it) },
+                    placeholder = { Text("Search clips...", style = MaterialTheme.typography.bodySmall) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.setSearchQuery("") }, modifier = Modifier.size(20.dp)) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear search", modifier = Modifier.size(14.dp))
+                            }
                         }
-                    }
-                },
-                shape = RoundedCornerShape(10.dp),
-                textStyle = MaterialTheme.typography.bodySmall,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 36.dp, max = 42.dp)
-                    .testTag("search_input"),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    textStyle = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 36.dp, max = 40.dp)
+                        .testTag("search_input"),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                    )
                 )
-            )
+                OutlinedButton(
+                    onClick = {
+                        viewModel.checkClipboardAndSave(context)
+                        Toast.makeText(context, "Clipboard fetched!", Toast.LENGTH_SHORT).show()
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+                    modifier = Modifier
+                        .heightIn(min = 36.dp, max = 40.dp)
+                        .testTag("paste_clipboard_button")
+                ) {
+                    Icon(Icons.Outlined.ContentPaste, contentDescription = "Paste", modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text("Paste", style = MaterialTheme.typography.labelSmall)
+                }
+            }
             Spacer(modifier = Modifier.height(4.dp))
             // Compact Filter Chips
             LazyRow(

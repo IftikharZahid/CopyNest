@@ -19,6 +19,7 @@ import com.zahidcodes.copynets.ui.ClipboardViewModel
 import com.zahidcodes.copynets.ui.DetailScreen
 import com.zahidcodes.copynets.ui.HomeScreen
 import com.zahidcodes.copynets.ui.SettingsScreen
+import com.zahidcodes.copynets.ui.SplashScreen
 import com.zahidcodes.copynets.ui.theme.CopyNestTheme
 
 class MainActivity : ComponentActivity() {
@@ -45,7 +46,16 @@ class MainActivity : ComponentActivity() {
 
             CopyNestTheme(themeMode = themeMode) {
                 val navController = rememberNavController()
-                NavHost(navController = navController, startDestination = "home") {
+                NavHost(navController = navController, startDestination = "splash") {
+                    composable("splash") {
+                        SplashScreen(
+                            onTimeout = {
+                                navController.navigate("home") {
+                                    popUpTo("splash") { inclusive = true }
+                                }
+                            }
+                        )
+                    }
                     composable("home") {
                         HomeScreen(
                             viewModel = viewModel,

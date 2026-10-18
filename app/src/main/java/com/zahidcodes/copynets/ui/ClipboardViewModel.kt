@@ -89,12 +89,12 @@ class ClipboardViewModel(context: Context) : ViewModel() {
 
     fun checkClipboardAndSave(context: Context) {
         viewModelScope.launch {
-            if (!autoCapture.value) return@launch
             try {
                 val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                 val clipData = clipboardManager?.primaryClip
                 if (clipData != null && clipData.itemCount > 0) {
-                    val text = clipData.getItemAt(0).text?.toString()?.trim()
+                    val item = clipData.getItemAt(0)
+                    val text = item.text?.toString()?.trim() ?: item.coerceToText(context)?.toString()?.trim()
                     if (!text.isNullOrEmpty()) {
                         val mostRecent = repository.getMostRecentClip()
                         if (mostRecent?.text != text) {

@@ -439,7 +439,7 @@ fun SettingsScreen(
                     // Connect Links (Ultra-compact 4 buttons in 1 row)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         // GitHub Button
                         OutlinedButton(
@@ -455,16 +455,16 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("developer_github_button"),
-                            contentPadding = PaddingValues(horizontal = 1.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 1.dp)
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_github),
                                 contentDescription = "GitHub",
                                 tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(2.dp))
-                            Text("GitHub", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp))
+                            Text("GitHub", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
                         }
 
                         // WhatsApp Button
@@ -481,16 +481,16 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("developer_whatsapp_button"),
-                            contentPadding = PaddingValues(horizontal = 1.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 1.dp)
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_whatsapp),
                                 contentDescription = "WhatsApp",
                                 tint = Color(0xFF25D366),
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(2.dp))
-                            Text("WhatsApp", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp))
+                            Text("WhatsApp", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
                         }
 
                         // Facebook Button
@@ -507,16 +507,16 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("developer_facebook_button"),
-                            contentPadding = PaddingValues(horizontal = 1.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 1.dp)
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_facebook),
                                 contentDescription = "Facebook",
                                 tint = Color(0xFF1877F2),
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(2.dp))
-                            Text("Facebook", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp))
+                            Text("Facebook", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
                         }
 
                         // Web Portfolio Button
@@ -533,16 +533,16 @@ fun SettingsScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("developer_web_button"),
-                            contentPadding = PaddingValues(horizontal = 1.dp, vertical = 4.dp)
+                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 1.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Language,
                                 contentDescription = "Website",
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(2.dp))
-                            Text("Website", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp))
+                            Text("Website", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
                         }
                     }
                 }
