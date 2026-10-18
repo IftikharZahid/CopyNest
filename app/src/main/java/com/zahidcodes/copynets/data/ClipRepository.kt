@@ -1,0 +1,27 @@
+package com.zahidcodes.copynets.data
+
+import kotlinx.coroutines.flow.Flow
+
+class ClipRepository(private val clipDao: ClipDao) {
+    val allClips: Flow<List<ClipEntity>> = clipDao.getAllClips()
+
+    fun searchClips(query: String): Flow<List<ClipEntity>> = clipDao.searchClips(query)
+
+    fun getClipsByType(type: String): Flow<List<ClipEntity>> = clipDao.getClipsByType(type)
+
+    fun getPinnedClips(): Flow<List<ClipEntity>> = clipDao.getPinnedClips()
+
+    suspend fun getMostRecentClip(): ClipEntity? = clipDao.getMostRecentClip()
+
+    suspend fun insertClip(clip: ClipEntity): Long = clipDao.insertClip(clip)
+
+    suspend fun updateClip(clip: ClipEntity) = clipDao.updateClip(clip)
+
+    suspend fun getAllClipsList(): List<ClipEntity> = clipDao.getAllClipsList()
+
+    suspend fun insertClips(clips: List<ClipEntity>) = clipDao.insertClips(clips)
+
+    suspend fun deleteClipById(id: Long) = clipDao.deleteClipById(id)
+
+    suspend fun deleteAllClips() = clipDao.deleteAllClips()
+}
