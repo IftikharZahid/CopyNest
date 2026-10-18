@@ -31,6 +31,15 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                 _themeMode.value = mode
             }
         }
+        try {
+            val appContext = context.applicationContext
+            val clipboardManager = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+            clipboardManager?.addPrimaryClipChangedListener {
+                checkClipboardAndSave(appContext)
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
     }
 
     private val _searchQuery = MutableStateFlow("")

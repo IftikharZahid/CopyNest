@@ -30,6 +30,8 @@ fun AddClipScreen(
 
     val categories = listOf("General", "Links", "Code", "Study", "Work", "Important")
 
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -63,7 +65,8 @@ fun AddClipScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
-                )
+                ),
+                scrollBehavior = scrollBehavior
             )
         }
     ) { paddingValues ->
@@ -71,61 +74,62 @@ fun AddClipScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Title and Category in the same line
+            // Title and Category in the same line - compact
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Separate Note Title input
+                // Compact Note Title input
                 OutlinedTextField(
                     value = noteTitle,
                     onValueChange = {
                         noteTitle = it
-                        // Auto-select General as default category when entering a title if not selected
                         if (selectedCategory.isBlank()) {
                             selectedCategory = "General"
                         }
                     },
-                    label = { Text("Note Title") },
-                    placeholder = { Text("Enter note title") },
+                    label = { Text("Title") },
+                    placeholder = { Text("Note title") },
                     modifier = Modifier
                         .weight(1f)
+                        .heightIn(min = 48.dp, max = 56.dp)
                         .testTag("add_title_input"),
                     singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    textStyle = MaterialTheme.typography.bodyMedium,
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Outlined.Title,
                             contentDescription = null,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 )
 
-                // Separate Category Selector dropdown
+                // Compact Category Selector dropdown
                 Box(modifier = Modifier.wrapContentSize(Alignment.TopStart)) {
                     OutlinedButton(
                         onClick = { expandedDropdown = true },
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(10.dp),
                         modifier = Modifier
-                            .height(56.dp)
+                            .height(48.dp)
                             .testTag("category_dropdown_button"),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Category,
                             contentDescription = null,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(selectedCategory)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                        Text(selectedCategory, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
 
                     DropdownMenu(
@@ -141,7 +145,7 @@ fun AddClipScreen(
                                             Icons.Default.Check,
                                             contentDescription = null,
                                             tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp)
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     }
                                 },
@@ -155,17 +159,18 @@ fun AddClipScreen(
                 }
             }
 
-            // Body Content section
+            // Body Content section: compact, 5 lines minLines by default, auto-expanding as more details added
             OutlinedTextField(
                 value = textContent,
                 onValueChange = { textContent = it },
                 label = { Text("Content / Text") },
                 placeholder = { Text("Paste or type your note content here...") },
+                minLines = 5,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
                     .testTag("add_clip_content_input"),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(10.dp),
+                textStyle = MaterialTheme.typography.bodyMedium
             )
         }
     }

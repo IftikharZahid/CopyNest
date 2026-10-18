@@ -116,7 +116,8 @@ fun DetailScreen(
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
-                )
+                ),
+                scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
             )
         }
     ) { paddingValues ->
@@ -178,10 +179,10 @@ fun DetailScreen(
             Spacer(modifier = Modifier.height(14.dp))
 
             if (isEditing) {
-                // Separate Title and Category in the same line
+                // Separate Title and Category in the same line - compact
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
@@ -192,28 +193,30 @@ fun DetailScreen(
                                 editedCategory = "General"
                             }
                         },
-                        label = { Text("Note Title") },
+                        label = { Text("Title") },
                         placeholder = { Text("Enter title") },
                         modifier = Modifier
                             .weight(1f)
+                            .heightIn(min = 48.dp, max = 56.dp)
                             .testTag("edit_clip_title_input"),
                         singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        leadingIcon = { Icon(Icons.Outlined.Title, contentDescription = null, modifier = Modifier.size(20.dp)) }
+                        shape = RoundedCornerShape(10.dp),
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        leadingIcon = { Icon(Icons.Outlined.Title, contentDescription = null, modifier = Modifier.size(18.dp)) }
                     )
 
                     Box(modifier = Modifier.wrapContentSize(Alignment.TopStart)) {
                         OutlinedButton(
                             onClick = { expandedDropdown = true },
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier
-                                .height(56.dp)
+                                .height(48.dp)
                                 .testTag("edit_category_dropdown_button"),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                         ) {
-                            Text(editedCategory)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                            Text(editedCategory, style = MaterialTheme.typography.bodyMedium)
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(18.dp))
                         }
 
                         DropdownMenu(
@@ -229,7 +232,7 @@ fun DetailScreen(
                                                 Icons.Default.Check,
                                                 contentDescription = null,
                                                 tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(18.dp)
+                                                modifier = Modifier.size(16.dp)
                                             )
                                         }
                                     },
@@ -243,18 +246,19 @@ fun DetailScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
                     value = editedText,
                     onValueChange = { editedText = it },
                     label = { Text("Content / Text") },
                     placeholder = { Text("Paste or type your content here...") },
+                    minLines = 5,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(240.dp)
                         .testTag("edit_clip_text_input"),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    textStyle = MaterialTheme.typography.bodyMedium
                 )
 
                 Spacer(modifier = Modifier.height(18.dp))

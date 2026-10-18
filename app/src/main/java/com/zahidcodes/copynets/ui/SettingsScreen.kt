@@ -46,6 +46,7 @@ fun SettingsScreen(
     val isSystemDark = isSystemInDarkTheme()
 
     var showClearConfirm by remember { mutableStateOf(false) }
+    var clearConfirmInput by remember { mutableStateOf("") }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/plain")
@@ -106,9 +107,9 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp)
+                .padding(12.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // Clipboard Settings Card
             Card(
@@ -435,10 +436,10 @@ fun SettingsScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Connect Links (Compact 4 buttons in 1 row)
+                    // Connect Links (Ultra-compact 4 buttons in 1 row)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         // GitHub Button
                         OutlinedButton(
@@ -450,20 +451,20 @@ fun SettingsScreen(
                                     Toast.makeText(context, "Could not open link", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("developer_github_button"),
-                            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp)
+                            contentPadding = PaddingValues(horizontal = 1.dp, vertical = 4.dp)
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_github),
                                 contentDescription = "GitHub",
                                 tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(14.dp)
                             )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text("GitHub", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text("GitHub", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp))
                         }
 
                         // WhatsApp Button
@@ -476,20 +477,20 @@ fun SettingsScreen(
                                     Toast.makeText(context, "Could not open WhatsApp", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("developer_whatsapp_button"),
-                            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp)
+                            contentPadding = PaddingValues(horizontal = 1.dp, vertical = 4.dp)
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_whatsapp),
                                 contentDescription = "WhatsApp",
                                 tint = Color(0xFF25D366),
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(14.dp)
                             )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text("WhatsApp", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text("WhatsApp", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp))
                         }
 
                         // Facebook Button
@@ -502,20 +503,20 @@ fun SettingsScreen(
                                     Toast.makeText(context, "Could not open Facebook", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("developer_facebook_button"),
-                            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp)
+                            contentPadding = PaddingValues(horizontal = 1.dp, vertical = 4.dp)
                         ) {
                             Icon(
                                 painter = painterResource(id = R.drawable.ic_facebook),
                                 contentDescription = "Facebook",
                                 tint = Color(0xFF1877F2),
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(14.dp)
                             )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text("Facebook", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text("Facebook", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp))
                         }
 
                         // Web Portfolio Button
@@ -528,20 +529,20 @@ fun SettingsScreen(
                                     Toast.makeText(context, "Could not open Website", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("developer_web_button"),
-                            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 6.dp)
+                            contentPadding = PaddingValues(horizontal = 1.dp, vertical = 4.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Language,
                                 contentDescription = "Website",
                                 tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(14.dp)
                             )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text("Website", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text("Website", style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp))
                         }
                     }
                 }
@@ -551,16 +552,36 @@ fun SettingsScreen(
 
     if (showClearConfirm) {
         AlertDialog(
-            onDismissRequest = { showClearConfirm = false },
-            title = { Text("Clear All Clips") },
-            text = { Text("Are you sure you want to delete all saved clips? This action cannot be undone.") },
+            onDismissRequest = {
+                showClearConfirm = false
+                clearConfirmInput = ""
+            },
+            title = { Text("Clear All Records") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This action will permanently delete all saved clips. To confirm, please type \"Delete All Record\" below:")
+                    OutlinedTextField(
+                        value = clearConfirmInput,
+                        onValueChange = { clearConfirmInput = it },
+                        placeholder = { Text("Delete All Record") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("clear_confirm_input")
+                    )
+                }
+            },
             confirmButton = {
                 Button(
                     onClick = {
-                        viewModel.deleteAllClips()
-                        showClearConfirm = false
-                        Toast.makeText(context, "All clips deleted", Toast.LENGTH_SHORT).show()
+                        if (clearConfirmInput.trim() == "Delete All Record") {
+                            viewModel.deleteAllClips()
+                            showClearConfirm = false
+                            clearConfirmInput = ""
+                            Toast.makeText(context, "All records deleted", Toast.LENGTH_SHORT).show()
+                        }
                     },
+                    enabled = clearConfirmInput.trim() == "Delete All Record",
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.testTag("confirm_clear_all_button")
                 ) {
@@ -568,7 +589,10 @@ fun SettingsScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearConfirm = false }) {
+                TextButton(onClick = {
+                    showClearConfirm = false
+                    clearConfirmInput = ""
+                }) {
                     Text("Cancel")
                 }
             }

@@ -57,7 +57,7 @@ fun HomeScreen(
                             modifier = Modifier.size(34.dp)
                         ) {
                             Image(
-                                painter = painterResource(id = R.drawable.ic_launcher_foreground),
+                                painter = painterResource(id = R.drawable.ic_app_logo),
                                 contentDescription = "App Logo",
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -72,12 +72,6 @@ fun HomeScreen(
                     }
                 },
                 actions = {
-                    IconButton(
-                        onClick = { viewModel.checkClipboardAndSave(context) },
-                        modifier = Modifier.testTag("refresh_clipboard_button")
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Check Clipboard")
-                    }
                     IconButton(
                         onClick = onNavigateToSettings,
                         modifier = Modifier.testTag("settings_button")
@@ -109,22 +103,25 @@ fun HomeScreen(
         ) {
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Search Bar
+            Spacer(modifier = Modifier.height(2.dp))
+            // Compact Search Bar
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { viewModel.setSearchQuery(it) },
-                placeholder = { Text("Search your clips and notes...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                placeholder = { Text("Search your clips and notes...", style = MaterialTheme.typography.bodySmall) },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
                 trailingIcon = {
                     if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                        IconButton(onClick = { viewModel.setSearchQuery("") }, modifier = Modifier.size(20.dp)) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear search", modifier = Modifier.size(14.dp))
                         }
                     }
                 },
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(10.dp),
+                textStyle = MaterialTheme.typography.bodySmall,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 36.dp, max = 42.dp)
                     .testTag("search_input"),
                 singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(
@@ -132,12 +129,10 @@ fun HomeScreen(
                     unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
                 )
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Filter Chips
+            Spacer(modifier = Modifier.height(4.dp))
+            // Compact Filter Chips
             LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 val filters = listOf(
@@ -151,21 +146,20 @@ fun HomeScreen(
                     FilterChip(
                         selected = selectedFilter == id,
                         onClick = { viewModel.setFilter(id) },
-                        label = { Text(label, style = MaterialTheme.typography.labelSmall) },
+                        label = { Text(label, style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp)) },
                         leadingIcon = {
                             Icon(
                                 imageVector = icon,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                         },
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(30.dp)
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
+            Spacer(modifier = Modifier.height(4.dp))
             // Clips List with tight, compact spacing
             if (clips.isEmpty()) {
                 Box(
@@ -248,7 +242,7 @@ fun ClipCard(
                 onClick = onClick,
                 onLongClick = onCopy
             )
-            .testTag("clip_card_${clip.id}"),
+            .testTag("clip_card_" + clip.id),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         ),
@@ -260,7 +254,7 @@ fun ClipCard(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 9.dp)
         ) {
-            // Header Row: Type Icon, Category Badge, Timestamp, and Actions
+            // Single Top Line: Type Icon, Title, Category Pill, Timestamp, and Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -295,7 +289,20 @@ fun ClipCard(
                         }
                     }
 
-                    // Professional Category Pill
+                    // Title (or text snippet if title blank)
+                    Text(
+                        text = clip.title.ifBlank { clip.text.take(28) },
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+
+                    // Category Pill
                     Surface(
                         shape = RoundedCornerShape(6.dp),
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
@@ -304,10 +311,10 @@ fun ClipCard(
                             text = clip.category,
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 11.sp
+                                fontSize = 10.sp
                             ),
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -316,7 +323,7 @@ fun ClipCard(
                     // Timestamp
                     Text(
                         text = formattedDate,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                         color = MaterialTheme.colorScheme.outline,
                         maxLines = 1
                     )
@@ -325,79 +332,57 @@ fun ClipCard(
                 // Action Buttons in the same line
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier.padding(start = 4.dp)
                 ) {
                     IconButton(
                         onClick = onTogglePin,
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
                             imageVector = if (clip.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                             contentDescription = "Pin",
-                            modifier = Modifier.size(15.dp),
+                            modifier = Modifier.size(14.dp),
                             tint = if (clip.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                         )
                     }
                     IconButton(
                         onClick = onCopy,
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.ContentCopy,
                             contentDescription = "Copy",
-                            modifier = Modifier.size(15.dp),
+                            modifier = Modifier.size(14.dp),
                             tint = MaterialTheme.colorScheme.outline
                         )
                     }
                     IconButton(
                         onClick = onDelete,
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(24.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.DeleteOutline,
                             contentDescription = "Delete",
-                            modifier = Modifier.size(15.dp),
+                            modifier = Modifier.size(14.dp),
                             tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
                         )
                     }
                 }
             }
 
-            // Note Content Section: Title and snippet displayed cleanly
-            if (clip.title.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = clip.title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.5.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = clip.text,
-                    style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = if (clip.contentType == "CODE") FontFamily.Monospace else FontFamily.Default
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = clip.text,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        fontFamily = if (clip.contentType == "CODE") FontFamily.Monospace else FontFamily.Default
-                    ),
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
+            // Below the single top line: Content
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = clip.text,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontFamily = if (clip.contentType == "CODE") FontFamily.Monospace else FontFamily.Default,
+                    fontSize = 12.5.sp
+                ),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
