@@ -34,13 +34,23 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zahidcodes.copynets.R
 import com.zahidcodes.copynets.data.ClipEntity
+import com.zahidcodes.copynets.data.DetectedLink
+import com.zahidcodes.copynets.data.LinkMetadata
+import com.zahidcodes.copynets.data.LinkMetadataManager
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -57,6 +67,7 @@ fun HomeScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedFilter by viewModel.selectedFilter.collectAsState()
+    val linkMetadataCache by viewModel.linkMetadataCache.collectAsState()
 
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedClipIds by remember { mutableStateOf(setOf<Long>()) }
@@ -575,6 +586,9 @@ fun HomeScreen(
                                         clip = clip,
                                         isSelectionMode = isSelectionMode,
                                         isSelected = isClipSelected,
+                                        linkMetadataCache = linkMetadataCache,
+                                        onRequestLinkMetadata = { url -> viewModel.requestLinkMetadata(url) },
+                                        onOpenLink = { url -> LinkMetadataManager.openUrl(context, url) },
                                         onClick = {
                                             if (isSelectionMode) {
                                                 toggleClipSelection(clip.id)
@@ -640,6 +654,9 @@ fun HomeScreen(
                                     clip = clip,
                                     isSelectionMode = isSelectionMode,
                                     isSelected = isClipSelected,
+                                    linkMetadataCache = linkMetadataCache,
+                                    onRequestLinkMetadata = { url -> viewModel.requestLinkMetadata(url) },
+                                    onOpenLink = { url -> LinkMetadataManager.openUrl(context, url) },
                                     onClick = {
                                         if (isSelectionMode) {
                                             toggleClipSelection(clip.id)
@@ -852,6 +869,9 @@ fun ClipCard(
     clip: ClipEntity,
     isSelectionMode: Boolean = false,
     isSelected: Boolean = false,
+    linkMetadataCache: Map<String, LinkMetadata> = emptyMap(),
+    onRequestLinkMetadata: (String) -> Unit = {},
+    onOpenLink: (String) -> Unit = {},
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onCopy: () -> Unit,
@@ -860,15 +880,70 @@ fun ClipCard(
 ) {
     val dateFormat = remember { SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()) }
     val formattedDate = remember(clip.timestamp) { dateFormat.format(Date(clip.timestamp)) }
-    val displayCategory = remember(clip.category, clip.contentType) {
+    val detectedLinks = remember(clip.text) { LinkMetadataManager.extractLinks(clip.text) }
+    val primaryLink = detectedLinks.firstOrNull()
+    val primaryMetadata = primaryLink?.let { linkMetadataCache[it.normalizedUrl] }
+
+    LaunchedEffect(primaryLink?.normalizedUrl) {
+        if (primaryLink != null) {
+            onRequestLinkMetadata(primaryLink.normalizedUrl)
+        }
+    }
+
+    val effectiveContentType = remember(clip.contentType, primaryLink) {
+        if (primaryLink != null && clip.contentType != "CODE") "URL" else clip.contentType
+    }
+
+    val displayCategory = remember(clip.category, effectiveContentType) {
         if (clip.category.isBlank() || clip.category.equals("General", ignoreCase = true)) {
-            when (clip.contentType.uppercase()) {
+            when (effectiveContentType.uppercase()) {
                 "URL" -> "Links"
                 "CODE" -> "Code"
                 else -> "Text"
             }
         } else {
             clip.category
+        }
+    }
+
+    val headerTitle = remember(clip.title, clip.text, primaryMetadata?.title, primaryLink) {
+        when {
+            clip.title.isNotBlank() -> clip.title
+            primaryMetadata != null && primaryMetadata.title.isNotBlank() -> primaryMetadata.title
+            primaryLink != null -> LinkMetadataManager.formatFallbackSiteName(primaryLink.domain)
+            else -> clip.text.take(26)
+        }
+    }
+
+    val linkColor = MaterialTheme.colorScheme.primary
+    val annotatedContent: AnnotatedString = remember(clip.text, detectedLinks, linkColor) {
+        if (detectedLinks.isEmpty()) {
+            AnnotatedString(clip.text)
+        } else {
+            buildAnnotatedString {
+                append(clip.text)
+                detectedLinks.forEach { link ->
+                    val safeStart = link.startIndex.coerceIn(0, clip.text.length)
+                    val safeEnd = link.endIndex.coerceIn(safeStart, clip.text.length)
+                    if (safeStart < safeEnd) {
+                        addStyle(
+                            style = SpanStyle(
+                                color = linkColor,
+                                fontWeight = FontWeight.Medium,
+                                textDecoration = TextDecoration.Underline
+                            ),
+                            start = safeStart,
+                            end = safeEnd
+                        )
+                        addStringAnnotation(
+                            tag = "URL",
+                            annotation = link.normalizedUrl,
+                            start = safeStart,
+                            end = safeEnd
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -928,7 +1003,7 @@ fun ClipCard(
                     // Type Icon
                     Surface(
                         shape = RoundedCornerShape(5.dp),
-                        color = when (clip.contentType) {
+                        color = when (effectiveContentType) {
                             "URL" -> MaterialTheme.colorScheme.primaryContainer
                             "CODE" -> MaterialTheme.colorScheme.secondaryContainer
                             else -> MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.75f)
@@ -937,14 +1012,14 @@ fun ClipCard(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
-                                imageVector = when (clip.contentType) {
+                                imageVector = when (effectiveContentType) {
                                     "URL" -> Icons.Outlined.Link
                                     "CODE" -> Icons.Outlined.Code
                                     else -> Icons.Outlined.TextSnippet
                                 },
                                 contentDescription = null,
                                 modifier = Modifier.size(12.dp),
-                                tint = when (clip.contentType) {
+                                tint = when (effectiveContentType) {
                                     "URL" -> MaterialTheme.colorScheme.primary
                                     "CODE" -> MaterialTheme.colorScheme.secondary
                                     else -> MaterialTheme.colorScheme.tertiary
@@ -953,9 +1028,9 @@ fun ClipCard(
                         }
                     }
 
-                    // Title (or text snippet if title blank)
+                    // Title (uses fetched page title when clip has no custom title)
                     Text(
-                        text = clip.title.ifBlank { clip.text.take(26) },
+                        text = headerTitle,
                         style = MaterialTheme.typography.titleSmall.copy(
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.5.sp
@@ -1008,6 +1083,21 @@ fun ClipCard(
                         horizontalArrangement = Arrangement.End,
                         modifier = Modifier.padding(start = 4.dp)
                     ) {
+                        if (primaryLink != null) {
+                            IconButton(
+                                onClick = { onOpenLink(primaryLink.normalizedUrl) },
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .testTag("open_link_button_" + clip.id)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.OpenInNew,
+                                    contentDescription = "Open Link",
+                                    modifier = Modifier.size(13.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                         IconButton(
                             onClick = onTogglePin,
                             modifier = Modifier.size(22.dp)
@@ -1045,18 +1135,223 @@ fun ClipCard(
                 }
             }
 
-            // Below the single top line: Content
+            // Below the single top line: Content with clickable URLs
             Spacer(modifier = Modifier.height(3.dp))
+            var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
             Text(
-                text = clip.text,
+                text = annotatedContent,
                 style = MaterialTheme.typography.bodySmall.copy(
-                    fontFamily = if (clip.contentType == "CODE") FontFamily.Monospace else FontFamily.Default,
+                    fontFamily = if (effectiveContentType == "CODE") FontFamily.Monospace else FontFamily.Default,
                     fontSize = 12.sp
                 ),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                onTextLayout = { textLayoutResult = it },
+                modifier = if (detectedLinks.isNotEmpty() && !isSelectionMode) {
+                    Modifier
+                        .fillMaxWidth()
+                        .pointerInput(annotatedContent, isSelectionMode) {
+                            detectTapGestures(
+                                onTap = { pos ->
+                                    val layout = textLayoutResult
+                                    if (layout != null) {
+                                        val offset = layout.getOffsetForPosition(pos)
+                                        val urlAnnotation = annotatedContent
+                                            .getStringAnnotations(tag = "URL", start = offset, end = offset)
+                                            .firstOrNull()
+                                        if (urlAnnotation != null) {
+                                            onOpenLink(urlAnnotation.item)
+                                            return@detectTapGestures
+                                        }
+                                    }
+                                    onClick()
+                                },
+                                onLongPress = { onLongClick() }
+                            )
+                        }
+                } else {
+                    Modifier.fillMaxWidth()
+                }
             )
+
+            // Rich Link Metadata Preview Card when a link is detected in the clip
+            if (primaryLink != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                LinkMetadataPreviewCard(
+                    clipId = clip.id,
+                    link = primaryLink,
+                    metadata = primaryMetadata,
+                    onClick = {
+                        if (isSelectionMode) {
+                            onClick()
+                        } else {
+                            onOpenLink(primaryLink.normalizedUrl)
+                        }
+                    }
+                )
+            }
         }
     }
 }
+
+@Composable
+fun LinkMetadataPreviewCard(
+    clipId: Long,
+    link: DetectedLink,
+    metadata: LinkMetadata?,
+    onClick: () -> Unit
+) {
+    val siteName = remember(link.domain, metadata?.siteName) {
+        metadata?.siteName?.ifBlank { null } ?: LinkMetadataManager.formatFallbackSiteName(link.domain)
+    }
+    val pageTitle = remember(link.normalizedUrl, link.domain, metadata?.title) {
+        metadata?.title?.ifBlank { null } ?: LinkMetadataManager.formatFallbackTitle(link.normalizedUrl, link.domain)
+    }
+    val pageDescription = remember(link.normalizedUrl, metadata?.description) {
+        metadata?.description?.takeIf {
+            it.isNotBlank() && !it.equals(link.normalizedUrl, ignoreCase = true)
+        }
+    }
+    val isLoading = metadata == null || metadata.isLoading
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f),
+        border = BorderStroke(
+            width = 0.8.dp,
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("link_preview_card_$clipId")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Favicon / Site Emblem Container
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.outlineVariant),
+                modifier = Modifier.size(30.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    val favicon = metadata?.favicon
+                    if (favicon != null) {
+                        Image(
+                            bitmap = favicon,
+                            contentDescription = siteName,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(RoundedCornerShape(3.dp))
+                        )
+                    } else if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 1.6.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Outlined.Language,
+                            contentDescription = siteName,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
+            // Link Metadata Details (Site Name + Domain, Page Title, Description)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(1.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = siteName,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "•",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                    Text(
+                        text = if (isLoading) "${link.domain} (loading...)" else link.domain,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                        color = MaterialTheme.colorScheme.outline,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Text(
+                    text = pageTitle,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (!pageDescription.isNullOrBlank()) {
+                    Text(
+                        text = pageDescription,
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            // Open Link Action Pill
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Text(
+                        text = "Open",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Icon(
+                        imageVector = Icons.Outlined.OpenInNew,
+                        contentDescription = "Open link in browser",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(10.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+

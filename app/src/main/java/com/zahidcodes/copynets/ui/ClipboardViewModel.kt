@@ -9,6 +9,8 @@ import androidx.lifecycle.viewModelScope
 import com.zahidcodes.copynets.data.ClipDatabase
 import com.zahidcodes.copynets.data.ClipEntity
 import com.zahidcodes.copynets.data.ClipRepository
+import com.zahidcodes.copynets.data.LinkMetadata
+import com.zahidcodes.copynets.data.LinkMetadataManager
 import com.zahidcodes.copynets.data.UserPreferences
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
@@ -140,7 +142,9 @@ class ClipboardViewModel(context: Context) : ViewModel() {
         when (filter) {
             "PINNED" -> result = result.filter { it.isPinned }
             "URL" -> result = result.filter {
-                it.contentType == "URL" || it.category.equals("Links", ignoreCase = true)
+                it.contentType == "URL" ||
+                    it.category.equals("Links", ignoreCase = true) ||
+                    LinkMetadataManager.extractFirstLink(it.text) != null
             }
             "CODE" -> result = result.filter {
                 it.contentType == "CODE" || it.category.equals("Code", ignoreCase = true)
@@ -156,6 +160,12 @@ class ClipboardViewModel(context: Context) : ViewModel() {
         started = SharingStarted.Eagerly,
         initialValue = emptyList()
     )
+
+    val linkMetadataCache: StateFlow<Map<String, LinkMetadata>> = LinkMetadataManager.metadataCache
+
+    fun requestLinkMetadata(url: String) {
+        LinkMetadataManager.requestMetadata(url, viewModelScope)
+    }
 
     fun onHomeScreenShown(context: Context) {
         if (hasCompletedInitialHomeLoad) {
@@ -537,36 +547,38 @@ class ClipboardViewModel(context: Context) : ViewModel() {
 
     fun detectContentType(text: String): String {
         val trimmed = text.trim()
-        val singleTokenUrlRegex = Regex(
-            pattern = "^(https?://|ftp://|www\\.|[a-zA-Z0-9-]+\\.(com|org|net|io|dev|app|edu|gov|co|me|ai|pk|in|uk|us|xyz|info|biz))(\\S*)$",
-            option = RegexOption.IGNORE_CASE
-        )
+        val hasSingleTokenLink = !trimmed.contains(" ") && !trimmed.contains("\n") &&
+            LinkMetadataManager.extractFirstLink(trimmed) != null
+        val isCodeSnippet = (trimmed.contains("{") && trimmed.contains("}")) ||
+            (trimmed.contains("<") && trimmed.contains("</") && trimmed.contains(">")) ||
+            trimmed.contains("fun ") ||
+            trimmed.contains("function ") ||
+            trimmed.contains("class ") ||
+            trimmed.contains("val ") ||
+            trimmed.contains("var ") ||
+            trimmed.contains("const ") ||
+            trimmed.contains("import ") ||
+            trimmed.contains("export ") ||
+            trimmed.contains("def ") ||
+            trimmed.contains("return ") ||
+            trimmed.contains("public ") ||
+            trimmed.contains("private ") ||
+            trimmed.contains("#include") ||
+            trimmed.contains("=>") ||
+            trimmed.contains("println(") ||
+            trimmed.contains("console.log(") ||
+            (trimmed.contains("SELECT ", ignoreCase = false) && trimmed.contains("FROM ", ignoreCase = false))
+
         return when {
             trimmed.startsWith("http://", true) ||
                 trimmed.startsWith("https://", true) ||
                 trimmed.startsWith("www.", true) ||
                 trimmed.startsWith("ftp://", true) ||
-                (!trimmed.contains(" ") && !trimmed.contains("\n") && singleTokenUrlRegex.matches(trimmed)) -> "URL"
+                hasSingleTokenLink -> "URL"
 
-            (trimmed.contains("{") && trimmed.contains("}")) ||
-                (trimmed.contains("<") && trimmed.contains("</") && trimmed.contains(">")) ||
-                trimmed.contains("fun ") ||
-                trimmed.contains("function ") ||
-                trimmed.contains("class ") ||
-                trimmed.contains("val ") ||
-                trimmed.contains("var ") ||
-                trimmed.contains("const ") ||
-                trimmed.contains("import ") ||
-                trimmed.contains("export ") ||
-                trimmed.contains("def ") ||
-                trimmed.contains("return ") ||
-                trimmed.contains("public ") ||
-                trimmed.contains("private ") ||
-                trimmed.contains("#include") ||
-                trimmed.contains("=>") ||
-                trimmed.contains("println(") ||
-                trimmed.contains("console.log(") ||
-                trimmed.contains("SELECT ", ignoreCase = false) && trimmed.contains("FROM ", ignoreCase = false) -> "CODE"
+            isCodeSnippet -> "CODE"
+
+            LinkMetadataManager.extractFirstLink(trimmed) != null -> "URL"
 
             else -> "TEXT"
         }

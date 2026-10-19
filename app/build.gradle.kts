@@ -9,11 +9,11 @@ plugins {
 }
 
 android {
-  namespace = "com.zahidcodes.copynets"
+  namespace = "com.zahidcodes.copynest"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.zahidcodes.copynets"
+    applicationId = "com.zahidcodes.copynest"
     minSdk = 24
     targetSdk = 36
     versionCode = 2

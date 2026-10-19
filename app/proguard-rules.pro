@@ -1,5 +1,5 @@
 # Add project specific ProGuard rules here.
--keep class com.zahidcodes.copynets.data.** { *; }
+-keep class com.zahidcodes.copynest.data.** { *; }
 -keepclassmembers class * {
     @androidx.room.* <methods>;
     @androidx.room.* <fields>;
