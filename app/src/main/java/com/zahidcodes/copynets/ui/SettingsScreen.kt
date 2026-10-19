@@ -23,11 +23,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zahidcodes.copynets.R
@@ -91,7 +95,12 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = {
+                    Text(
+                        text = "Settings",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag("back_button")) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -107,70 +116,107 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(12.dp)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Clipboard Settings Card
+            // Clipboard Settings Card (Compact)
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(11.dp)) {
                     Text(
                         text = "Clipboard Capture",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        ),
                         color = MaterialTheme.colorScheme.primary
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Auto-capture on resume", style = MaterialTheme.typography.bodyLarge)
-                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                "Automatically save new clipboard text when opening the app.",
-                                style = MaterialTheme.typography.bodySmall,
+                                text = "Auto-capture on resume",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 12.5.sp
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Automatically save new clipboard text when opening the app.",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 11.sp,
+                                    lineHeight = 14.sp
+                                ),
                                 color = MaterialTheme.colorScheme.outline
                             )
                         }
                         Switch(
                             checked = autoCapture,
                             onCheckedChange = { viewModel.setAutoCapture(it) },
-                            modifier = Modifier.testTag("auto_capture_switch")
+                            thumbContent = if (autoCapture) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                }
+                            } else null,
+                            modifier = Modifier
+                                .scale(0.75f)
+                                .height(26.dp)
+                                .testTag("auto_capture_switch")
                         )
                     }
                 }
             }
 
-            // Appearance Card
+            // Appearance Card (Compact)
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Appearance",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = "Theme Mode",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
+                Column(modifier = Modifier.padding(11.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Appearance",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
+                            ),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        val activeThemeLabel = when (themeMode.uppercase()) {
+                            "DARK" -> "Dark active"
+                            "LIGHT" -> "Light active"
+                            else -> "System (${if (isSystemDark) "Dark" else "Light"})"
+                        }
+                        Text(
+                            text = activeThemeLabel,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         listOf(
                             Triple("SYSTEM", "System", Icons.Outlined.BrightnessAuto),
@@ -178,167 +224,174 @@ fun SettingsScreen(
                             Triple("DARK", "Dark", Icons.Outlined.DarkMode)
                         ).forEach { (mode, label, icon) ->
                             val isSelected = themeMode.equals(mode, ignoreCase = true)
-                            FilterChip(
-                                selected = isSelected,
+                            Surface(
                                 onClick = { viewModel.setThemeMode(mode) },
-                                label = {
-                                    Text(
-                                        text = label,
-                                        style = MaterialTheme.typography.labelMedium
-                                    )
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                 },
-                                leadingIcon = {
+                                border = BorderStroke(
+                                    0.8.dp,
+                                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(30.dp)
+                                    .testTag("theme_chip_${mode.lowercase()}")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
                                     Icon(
                                         imageVector = icon,
                                         contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
+                                        tint = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(13.dp)
                                     )
-                                },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                                    selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                ),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("theme_chip_${mode.lowercase()}")
-                            )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
+                                        ),
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    val activeThemeLabel = when (themeMode.uppercase()) {
-                        "DARK" -> "Dark theme is currently active"
-                        "LIGHT" -> "Light theme is currently active"
-                        else -> "Following system (${if (isSystemDark) "Dark" else "Light"})"
-                    }
-                    Text(
-                        text = activeThemeLabel,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline
-                    )
                 }
             }
 
-            // Data Management Card
+            // Data Management Card (Compact)
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(11.dp)) {
                     Text(
                         text = "Data Management",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.titleSmall.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.sp
+                        ),
                         color = MaterialTheme.colorScheme.primary
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Backup & Restore",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Export notes to a local text file or import them back to your notebook.",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "Export notes to a local text file or import them back.",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                         color = MaterialTheme.colorScheme.outline
                     )
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
                             onClick = { exportLauncher.launch("copynest_backup.txt") },
                             modifier = Modifier
                                 .weight(1f)
+                                .height(34.dp)
                                 .testTag("export_notes_button"),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                         ) {
-                            Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Export Notes", style = MaterialTheme.typography.labelMedium)
+                            Icon(Icons.Outlined.FileDownload, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Export Notes", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
                         }
 
                         OutlinedButton(
                             onClick = { importLauncher.launch(arrayOf("text/plain", "*/*")) },
                             modifier = Modifier
                                 .weight(1f)
+                                .height(34.dp)
                                 .testTag("import_notes_button"),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
                         ) {
-                            Icon(Icons.Outlined.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Import Notes", style = MaterialTheme.typography.labelMedium)
+                            Icon(Icons.Outlined.FileUpload, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Import Notes", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(16.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                    Spacer(modifier = Modifier.height(8.dp))
 
                     OutlinedButton(
                         onClick = { showClearConfirm = true },
                         modifier = Modifier
                             .fillMaxWidth()
+                            .height(34.dp)
                             .testTag("clear_all_button"),
-                        shape = RoundedCornerShape(12.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Icon(Icons.Outlined.DeleteForever, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Clear All Saved Clips")
+                        Icon(Icons.Outlined.DeleteForever, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Clear All Saved Clips", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.5.sp))
                     }
                 }
             }
 
-            // Privacy Card
+            // Privacy Card (Compact)
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Lock,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                     Column {
                         Text(
                             text = "100% Private & Local",
-                            style = MaterialTheme.typography.titleSmall,
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
                             color = MaterialTheme.colorScheme.primary
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Your clipboard notes are stored exclusively on your device in a secure Room database. No data is ever transmitted externally.",
-                            style = MaterialTheme.typography.bodySmall,
+                            text = "All clips are stored locally on your device in a secure database.",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 10.5.sp,
+                                lineHeight = 14.sp
+                            ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
             }
 
-            // About Developer Card (Compact Facebook Details)
+            // About Developer Card (Ultra-Compact)
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(11.dp)) {
                     // Profile Header Row
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -349,41 +402,97 @@ fun SettingsScreen(
                             contentDescription = "Iftikhar Zahid Profile Picture",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
-                                .size(52.dp)
+                                .size(42.dp)
                                 .clip(CircleShape)
-                                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                                .border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(
-                                    text = "Iftikhar Zahid",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    shape = RoundedCornerShape(6.dp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                                 ) {
                                     Text(
-                                        text = "PRO",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        text = "Iftikhar Zahid",
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "PRO",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 8.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+
+                                // Compact "Buy me a coffee" button in the top-right corner next to developer name
+                                Surface(
+                                    onClick = {
+                                        try {
+                                            val intent = Intent(
+                                                Intent.ACTION_VIEW,
+                                                Uri.parse("https://buymeacoffee.com/iftikharzahid")
+                                            )
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Could not open link", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFFFFDD00),
+                                    border = BorderStroke(0.8.dp, Color(0xFFE5C100)),
+                                    modifier = Modifier
+                                        .height(22.dp)
+                                        .testTag("buy_me_a_coffee_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Coffee,
+                                            contentDescription = "Buy me a coffee",
+                                            tint = Color(0xFF1A1A1A),
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "Buy me a coffee",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 8.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = Color(0xFF1A1A1A),
+                                            maxLines = 1
+                                        )
+                                    }
                                 }
                             }
                             Text(
                                 text = "Senior Mobile & Web Developer",
-                                style = MaterialTheme.typography.bodySmall,
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Text(
                                 text = "iftikharzahid.me",
-                                style = MaterialTheme.typography.labelSmall,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.clickable {
                                     try {
@@ -397,52 +506,55 @@ fun SettingsScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                    // Compact Bio from Facebook & Portfolio
+                    // Compact Bio
                     Text(
-                        text = "Crafting high-performance cross-platform apps, modern UI/UX, and AI automation. Focused on clean architecture and lightweight mobile design.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 18.sp
+                        text = "Crafting high-performance cross-platform apps, modern UI/UX, and AI automation with clean architecture.",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 11.sp,
+                            lineHeight = 14.5.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
                     // Compact Skill Badges
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         listOf("Mobile Apps", "Flutter & React", "AI Automation", "Firebase").forEach { skill ->
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text(
                                     text = skill,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                    textAlign = TextAlign.Center,
                                     maxLines = 1,
-                                    modifier = Modifier.padding(vertical = 4.dp, horizontal = 2.dp)
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(vertical = 3.dp, horizontal = 2.dp)
                                 )
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
 
-                    // Connect Links (Ultra-compact 4 buttons in 1 row)
+                    // Connect Links (Ultra-compact 26.dp height pill buttons with minimal padding)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         // GitHub Button
-                        OutlinedButton(
+                        Surface(
                             onClick = {
                                 try {
                                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/IftikharZahid"))
@@ -451,24 +563,36 @@ fun SettingsScreen(
                                     Toast.makeText(context, "Could not open link", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier
                                 .weight(1f)
-                                .testTag("developer_github_button"),
-                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 1.dp)
+                                .height(26.dp)
+                                .testTag("developer_github_button")
                         ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_github),
-                                contentDescription = "GitHub",
-                                tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text("GitHub", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
+                            Row(
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_github),
+                                    contentDescription = "GitHub",
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "GitHub",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                    maxLines = 1
+                                )
+                            }
                         }
 
                         // WhatsApp Button
-                        OutlinedButton(
+                        Surface(
                             onClick = {
                                 try {
                                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/iftikharzahid"))
@@ -477,24 +601,36 @@ fun SettingsScreen(
                                     Toast.makeText(context, "Could not open WhatsApp", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier
                                 .weight(1f)
-                                .testTag("developer_whatsapp_button"),
-                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 1.dp)
+                                .height(26.dp)
+                                .testTag("developer_whatsapp_button")
                         ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_whatsapp),
-                                contentDescription = "WhatsApp",
-                                tint = Color(0xFF25D366),
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text("WhatsApp", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
+                            Row(
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_whatsapp),
+                                    contentDescription = "WhatsApp",
+                                    tint = Color(0xFF25D366),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "WhatsApp",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                    maxLines = 1
+                                )
+                            }
                         }
 
                         // Facebook Button
-                        OutlinedButton(
+                        Surface(
                             onClick = {
                                 try {
                                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://facebook.com/iftikharxahid"))
@@ -503,24 +639,36 @@ fun SettingsScreen(
                                     Toast.makeText(context, "Could not open Facebook", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier
                                 .weight(1f)
-                                .testTag("developer_facebook_button"),
-                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 1.dp)
+                                .height(26.dp)
+                                .testTag("developer_facebook_button")
                         ) {
-                            Icon(
-                                painter = painterResource(id = R.drawable.ic_facebook),
-                                contentDescription = "Facebook",
-                                tint = Color(0xFF1877F2),
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text("Facebook", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
+                            Row(
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(id = R.drawable.ic_facebook),
+                                    contentDescription = "Facebook",
+                                    tint = Color(0xFF1877F2),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Facebook",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                    maxLines = 1
+                                )
+                            }
                         }
 
                         // Web Portfolio Button
-                        OutlinedButton(
+                        Surface(
                             onClick = {
                                 try {
                                     val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://iftikharzahid.me"))
@@ -529,20 +677,32 @@ fun SettingsScreen(
                                     Toast.makeText(context, "Could not open Website", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant),
                             modifier = Modifier
                                 .weight(1f)
-                                .testTag("developer_web_button"),
-                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 1.dp)
+                                .height(26.dp)
+                                .testTag("developer_web_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Language,
-                                contentDescription = "Website",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text("Website", style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp))
+                            Row(
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Language,
+                                    contentDescription = "Website",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Website",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.5.sp),
+                                    maxLines = 1
+                                )
+                            }
                         }
                     }
                 }
@@ -559,7 +719,10 @@ fun SettingsScreen(
             title = { Text("Clear All Records") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("This action will permanently delete all saved clips. To confirm, please type \"Delete All Record\" below:")
+                    Text(
+                        text = "This action will permanently delete all saved clips. To confirm, please type \"Delete All Record\" below:",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     OutlinedTextField(
                         value = clearConfirmInput,
                         onValueChange = { clearConfirmInput = it },
@@ -572,16 +735,18 @@ fun SettingsScreen(
                 }
             },
             confirmButton = {
+                val isConfirmed = clearConfirmInput.trim().equals("Delete All Record", ignoreCase = true) ||
+                    clearConfirmInput.trim().equals("Delete All Records", ignoreCase = true)
                 Button(
                     onClick = {
-                        if (clearConfirmInput.trim() == "Delete All Record") {
+                        if (isConfirmed) {
                             viewModel.deleteAllClips()
                             showClearConfirm = false
                             clearConfirmInput = ""
                             Toast.makeText(context, "All records deleted", Toast.LENGTH_SHORT).show()
                         }
                     },
-                    enabled = clearConfirmInput.trim() == "Delete All Record",
+                    enabled = isConfirmed,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.testTag("confirm_clear_all_button")
                 ) {

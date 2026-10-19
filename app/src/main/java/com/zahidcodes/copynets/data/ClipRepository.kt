@@ -13,6 +13,10 @@ class ClipRepository(private val clipDao: ClipDao) {
 
     suspend fun getMostRecentClip(): ClipEntity? = clipDao.getMostRecentClip()
 
+    suspend fun getClipByText(text: String): ClipEntity? = clipDao.getClipByText(text)
+
+    suspend fun getClipById(id: Long): ClipEntity? = clipDao.getClipById(id)
+
     suspend fun insertClip(clip: ClipEntity): Long = clipDao.insertClip(clip)
 
     suspend fun updateClip(clip: ClipEntity) = clipDao.updateClip(clip)

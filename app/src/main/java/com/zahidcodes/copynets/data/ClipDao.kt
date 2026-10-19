@@ -24,6 +24,12 @@ interface ClipDao {
     @Query("SELECT * FROM clips ORDER BY timestamp DESC LIMIT 1")
     suspend fun getMostRecentClip(): ClipEntity?
 
+    @Query("SELECT * FROM clips WHERE TRIM(text) = TRIM(:text) ORDER BY timestamp DESC LIMIT 1")
+    suspend fun getClipByText(text: String): ClipEntity?
+
+    @Query("SELECT * FROM clips WHERE id = :id LIMIT 1")
+    suspend fun getClipById(id: Long): ClipEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertClip(clip: ClipEntity): Long
 

@@ -4,8 +4,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -23,12 +28,18 @@ import com.zahidcodes.copynets.ui.SplashScreen
 import com.zahidcodes.copynets.ui.theme.CopyNestTheme
 
 class MainActivity : ComponentActivity() {
+    private var clipboardViewModel: ClipboardViewModel? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             val context = LocalContext.current
-            val viewModel = remember { ClipboardViewModel(context.applicationContext) }
+            val viewModel = remember {
+                ClipboardViewModel(context.applicationContext).also {
+                    clipboardViewModel = it
+                }
+            }
             val themeMode by viewModel.themeMode.collectAsState()
 
             val lifecycleOwner = LocalLifecycleOwner.current
@@ -44,19 +55,40 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val windowInfo = LocalWindowInfo.current
+            LaunchedEffect(windowInfo.isWindowFocused) {
+                if (windowInfo.isWindowFocused) {
+                    viewModel.checkClipboardAndSave(context)
+                }
+            }
+
             CopyNestTheme(themeMode = themeMode) {
                 val navController = rememberNavController()
-                NavHost(navController = navController, startDestination = "splash") {
-                    composable("splash") {
+                var hasCompletedSplash by rememberSaveable { mutableStateOf(false) }
+
+                NavHost(
+                    navController = navController,
+                    startDestination = if (hasCompletedSplash) "home" else "splash"
+                ) {
+                    composable(
+                        route = "splash",
+                        exitTransition = { fadeOut(animationSpec = tween(280)) }
+                    ) {
                         SplashScreen(
                             onTimeout = {
+                                hasCompletedSplash = true
+                                viewModel.checkClipboardAndSave(context)
                                 navController.navigate("home") {
                                     popUpTo("splash") { inclusive = true }
+                                    launchSingleTop = true
                                 }
                             }
                         )
                     }
-                    composable("home") {
+                    composable(
+                        route = "home",
+                        enterTransition = { fadeIn(animationSpec = tween(280)) }
+                    ) {
                         HomeScreen(
                             viewModel = viewModel,
                             onNavigateToDetail = { clipId -> navController.navigate("detail/$clipId") },
@@ -88,6 +120,15 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            window.decorView.post {
+                clipboardViewModel?.checkClipboardAndSave(applicationContext)
             }
         }
     }
