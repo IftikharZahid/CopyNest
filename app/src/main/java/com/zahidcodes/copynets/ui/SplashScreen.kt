@@ -281,31 +281,11 @@ fun SplashScreen(
                         Image(
                             painter = painterResource(id = R.drawable.app_logo),
                             contentDescription = "CopyNest Logo",
-                            contentScale = ContentScale.Crop,
+                            contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clip(RoundedCornerShape(32.dp))
                                 .testTag("splash_logo_image")
-                        )
-
-                        // Clean bottom navy mask over the bottom 18% of the raster image so only
-                        // the crisp clipboard, white/blue paper layers, golden clip, star, and
-                        // golden ribbon are shown inside the icon card while the true "CopyNest"
-                        // wordmark reveals cleanly beneath it.
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .fillMaxHeight(0.19f)
-                                .align(Alignment.BottomCenter)
-                                .background(
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            BrandNavyCardBg.copy(alpha = 0.92f),
-                                            BrandNavyCardBg
-                                        )
-                                    )
-                                )
                         )
 
                         // Phase 2 & Phase 5 subtle golden highlight sweep across the clipboard & ribbon

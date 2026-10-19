@@ -42,7 +42,6 @@ fun DetailScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val clip = clips.find { it.id == clipId }
 
-    var isEditing by remember { mutableStateOf(true) }
     var editedTitle by remember { mutableStateOf(clip?.title ?: "") }
     var editedText by remember { mutableStateOf(clip?.text ?: "") }
     var editedCategory by remember {
@@ -114,11 +113,10 @@ fun DetailScreen(
 
     val dateFormat = remember { SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()) }
     val formattedDate = remember(clip.timestamp) { dateFormat.format(Date(clip.timestamp)) }
-    val activeText = if (isEditing) editedText else clip.text
-    val wordCount = remember(activeText) {
-        if (activeText.isBlank()) 0 else activeText.trim().split("\\s+".toRegex()).size
+    val wordCount = remember(editedText) {
+        if (editedText.isBlank()) 0 else editedText.trim().split("\\s+".toRegex()).size
     }
-    val charCount = activeText.length
+    val charCount = editedText.length
 
     Scaffold(
         topBar = {
@@ -155,7 +153,7 @@ fun DetailScreen(
                         }
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (isEditing) "Update Note" else clip.title.ifBlank { clip.category },
+                            text = "Update Note",
                             style = MaterialTheme.typography.titleSmall.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 14.5.sp
@@ -241,7 +239,7 @@ fun DetailScreen(
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
                     ) {
                         Text(
-                            text = if (isEditing) editedCategory else clip.category,
+                            text = editedCategory,
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 9.5.sp
@@ -279,10 +277,9 @@ fun DetailScreen(
                 }
             }
 
-            if (isEditing) {
-                // Single Compact Row: Title Input Box (34.dp) + Category Selector Pill (34.dp)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
+            // Single Compact Row: Title Input Box (34.dp) + Category Selector Pill (34.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -620,8 +617,10 @@ fun DetailScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(
-                        onClick = { isEditing = false },
-                        modifier = Modifier.height(30.dp),
+                        onClick = onBack,
+                        modifier = Modifier
+                            .height(30.dp)
+                            .testTag("cancel_edit_button"),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
                     ) {
                         Text("Cancel", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
@@ -651,61 +650,6 @@ fun DetailScreen(
                         )
                     }
                 }
-            } else {
-                if (clip.title.isNotBlank()) {
-                    Text(
-                        text = clip.title,
-                        style = MaterialTheme.typography.titleSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        text = clip.text,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontFamily = if (clip.contentType == "CODE") FontFamily.Monospace else FontFamily.Default,
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(10.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Button(
-                    onClick = { isEditing = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(32.dp)
-                        .testTag("edit_button"),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-                ) {
-                    Icon(Icons.Outlined.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Edit Note",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
-                        )
-                    )
-                }
-            }
         }
     }
 
