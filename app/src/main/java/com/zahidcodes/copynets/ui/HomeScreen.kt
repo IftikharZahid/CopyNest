@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
@@ -25,6 +26,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.layout.ContentScale
@@ -55,8 +58,50 @@ fun HomeScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedFilter by viewModel.selectedFilter.collectAsState()
 
+    var isSelectionMode by remember { mutableStateOf(false) }
+    var selectedClipIds by remember { mutableStateOf(setOf<Long>()) }
+
     LaunchedEffect(Unit) {
         viewModel.onHomeScreenShown(context)
+    }
+
+    LaunchedEffect(clips) {
+        val validIds = clips.map { it.id }.toSet()
+        val retained = selectedClipIds.intersect(validIds)
+        if (retained.size != selectedClipIds.size) {
+            selectedClipIds = retained
+        }
+        if (clips.isEmpty() && isSelectionMode) {
+            isSelectionMode = false
+            selectedClipIds = emptySet()
+        }
+    }
+
+    BackHandler(enabled = isSelectionMode) {
+        isSelectionMode = false
+        selectedClipIds = emptySet()
+    }
+
+    val toggleClipSelection: (Long) -> Unit = { clipId ->
+        selectedClipIds = if (selectedClipIds.contains(clipId)) {
+            selectedClipIds - clipId
+        } else {
+            selectedClipIds + clipId
+        }
+    }
+
+    val deleteSelectedClips: () -> Unit = {
+        val count = selectedClipIds.size
+        if (count > 0) {
+            viewModel.deleteClips(selectedClipIds)
+            Toast.makeText(
+                context,
+                if (count == 1) "Deleted 1 clip" else "Deleted $count clips",
+                Toast.LENGTH_SHORT
+            ).show()
+            selectedClipIds = emptySet()
+            isSelectionMode = false
+        }
     }
 
     val pinnedClips = remember(clips) { clips.filter { it.isPinned } }
@@ -64,62 +109,201 @@ fun HomeScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = RoundedCornerShape(9.dp),
-                            shadowElevation = 2.dp,
-                            modifier = Modifier.size(36.dp)
+            if (isSelectionMode) {
+                val allSelected = clips.isNotEmpty() && selectedClipIds.size == clips.size
+                TopAppBar(
+                    navigationIcon = {
+                        IconButton(
+                            onClick = {
+                                isSelectionMode = false
+                                selectedClipIds = emptySet()
+                            },
+                            modifier = Modifier.testTag("cancel_selection_button")
                         ) {
-                            Image(
-                                painter = painterResource(id = R.drawable.app_logo),
-                                contentDescription = "CopyNest Logo",
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(9.dp))
-                                    .testTag("home_app_logo")
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Exit Selection Mode"
                             )
                         }
-                        Spacer(modifier = Modifier.width(10.dp))
+                    },
+                    title = {
                         Column {
                             Text(
-                                text = "CopyNest",
+                                text = "${selectedClipIds.size} Selected",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 16.sp
-                                )
+                                ),
+                                modifier = Modifier.testTag("selection_count_text")
                             )
                             Text(
-                                text = "Smart Clipboard & Notes",
+                                text = if (selectedClipIds.isEmpty()) {
+                                    "Tap clips to select"
+                                } else {
+                                    "Tap delete to remove selected clips"
+                                },
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
                                 color = MaterialTheme.colorScheme.outline
                             )
                         }
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = onNavigateToSettings,
-                        modifier = Modifier.testTag("settings_button")
-                    ) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    },
+                    actions = {
+                        TextButton(
+                            onClick = {
+                                selectedClipIds = if (allSelected) {
+                                    emptySet()
+                                } else {
+                                    clips.map { it.id }.toSet()
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.testTag("select_all_button")
+                        ) {
+                            Icon(
+                                imageVector = if (allSelected) Icons.Default.Deselect else Icons.Default.SelectAll,
+                                contentDescription = if (allSelected) "Deselect All" else "Select All",
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (allSelected) "None" else "All",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            )
+                        }
+                        IconButton(
+                            onClick = deleteSelectedClips,
+                            enabled = selectedClipIds.isNotEmpty(),
+                            modifier = Modifier.testTag("delete_selected_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete Selected Clips",
+                                tint = if (selectedClipIds.isNotEmpty()) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+                                }
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                    )
                 )
-            )
+            } else {
+                TopAppBar(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(
+                                shape = RoundedCornerShape(9.dp),
+                                color = Color(0xFF051E58),
+                                shadowElevation = 2.dp,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(
+                                            brush = Brush.radialGradient(
+                                                colors = listOf(
+                                                    Color(0xFF0D3FA8),
+                                                    Color(0xFF031236)
+                                                )
+                                            )
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Image(
+                                        painter = painterResource(id = R.drawable.ic_launcher_fg_art),
+                                        contentDescription = "CopyNest Logo",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(2.dp)
+                                            .testTag("home_app_logo")
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "CopyNest",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
+                                    )
+                                )
+                                Text(
+                                    text = "Smart Clipboard & Notes",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+                        }
+                    },
+                    actions = {
+                        if (clips.isNotEmpty()) {
+                            IconButton(
+                                onClick = {
+                                    isSelectionMode = true
+                                    selectedClipIds = emptySet()
+                                },
+                                modifier = Modifier.testTag("multi_select_mode_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Checklist,
+                                    contentDescription = "Select Clips"
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = onNavigateToSettings,
+                            modifier = Modifier.testTag("settings_button")
+                        ) {
+                            Icon(Icons.Default.Settings, contentDescription = "Settings")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
+                )
+            }
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToAdd,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.testTag("add_clip_fab")
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Clip")
+            if (isSelectionMode) {
+                if (selectedClipIds.isNotEmpty()) {
+                    ExtendedFloatingActionButton(
+                        onClick = deleteSelectedClips,
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete Selected"
+                            )
+                        },
+                        text = {
+                            Text(
+                                text = "Delete (${selectedClipIds.size})",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            )
+                        },
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError,
+                        modifier = Modifier.testTag("delete_selected_fab")
+                    )
+                }
+            } else {
+                FloatingActionButton(
+                    onClick = onNavigateToAdd,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.testTag("add_clip_fab")
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Clip")
+                }
             }
         }
     ) { paddingValues ->
@@ -386,9 +570,26 @@ fun HomeScreen(
                         ) {
                             if (pinnedClips.isNotEmpty()) {
                                 items(pinnedClips, key = { "pinned_${it.id}" }) { clip ->
+                                    val isClipSelected = selectedClipIds.contains(clip.id)
                                     ClipCard(
                                         clip = clip,
-                                        onClick = { onNavigateToDetail(clip.id) },
+                                        isSelectionMode = isSelectionMode,
+                                        isSelected = isClipSelected,
+                                        onClick = {
+                                            if (isSelectionMode) {
+                                                toggleClipSelection(clip.id)
+                                            } else {
+                                                onNavigateToDetail(clip.id)
+                                            }
+                                        },
+                                        onLongClick = {
+                                            if (!isSelectionMode) {
+                                                isSelectionMode = true
+                                                selectedClipIds = setOf(clip.id)
+                                            } else {
+                                                toggleClipSelection(clip.id)
+                                            }
+                                        },
                                         onCopy = {
                                             viewModel.markInternalCopy(clip.text)
                                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -434,9 +635,26 @@ fun HomeScreen(
                             }
 
                             items(unpinnedClips, key = { "unpinned_${it.id}" }) { clip ->
+                                val isClipSelected = selectedClipIds.contains(clip.id)
                                 ClipCard(
                                     clip = clip,
-                                    onClick = { onNavigateToDetail(clip.id) },
+                                    isSelectionMode = isSelectionMode,
+                                    isSelected = isClipSelected,
+                                    onClick = {
+                                        if (isSelectionMode) {
+                                            toggleClipSelection(clip.id)
+                                        } else {
+                                            onNavigateToDetail(clip.id)
+                                        }
+                                    },
+                                    onLongClick = {
+                                        if (!isSelectionMode) {
+                                            isSelectionMode = true
+                                            selectedClipIds = setOf(clip.id)
+                                        } else {
+                                            toggleClipSelection(clip.id)
+                                        }
+                                    },
                                     onCopy = {
                                         viewModel.markInternalCopy(clip.text)
                                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -632,7 +850,10 @@ fun ProfessionalClipsLoader() {
 @Composable
 fun ClipCard(
     clip: ClipEntity,
+    isSelectionMode: Boolean = false,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onCopy: () -> Unit,
     onTogglePin: () -> Unit,
     onDelete: () -> Unit
@@ -657,18 +878,22 @@ fun ClipCard(
             .clip(RoundedCornerShape(10.dp))
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = onCopy
+                onLongClick = onLongClick
             )
             .testTag("clip_card_" + clip.id),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
+            containerColor = if (isSelected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
         ),
         border = BorderStroke(
-            width = 1.dp,
-            color = if (clip.isPinned) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
-            } else {
-                MaterialTheme.colorScheme.outlineVariant
+            width = if (isSelected) 1.5.dp else 1.dp,
+            color = when {
+                isSelected -> MaterialTheme.colorScheme.primary
+                clip.isPinned -> MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                else -> MaterialTheme.colorScheme.outlineVariant
             }
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
@@ -678,7 +903,7 @@ fun ClipCard(
                 .fillMaxWidth()
                 .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
-            // Single Top Line: Type Icon, Title, Auto-Assigned Category Pill, Timestamp, and Actions
+            // Single Top Line: Selection Indicator (when active), Type Icon, Title, Category Pill, Timestamp, and Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -689,6 +914,17 @@ fun ClipCard(
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
                     modifier = Modifier.weight(1f)
                 ) {
+                    if (isSelectionMode) {
+                        Icon(
+                            imageVector = if (isSelected) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+                            contentDescription = if (isSelected) "Selected" else "Not selected",
+                            tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier
+                                .size(18.dp)
+                                .testTag("clip_select_indicator_" + clip.id)
+                        )
+                    }
+
                     // Type Icon
                     Surface(
                         shape = RoundedCornerShape(5.dp),
@@ -765,44 +1001,46 @@ fun ClipCard(
                     )
                 }
 
-                // Action Buttons in the same line
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.End,
-                    modifier = Modifier.padding(start = 4.dp)
-                ) {
-                    IconButton(
-                        onClick = onTogglePin,
-                        modifier = Modifier.size(22.dp)
+                // Action Buttons in the same line (hidden during multi-select mode so taps toggle selection)
+                if (!isSelectionMode) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End,
+                        modifier = Modifier.padding(start = 4.dp)
                     ) {
-                        Icon(
-                            imageVector = if (clip.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                            contentDescription = "Pin",
-                            modifier = Modifier.size(13.dp),
-                            tint = if (clip.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                        )
-                    }
-                    IconButton(
-                        onClick = onCopy,
-                        modifier = Modifier.size(22.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.ContentCopy,
-                            contentDescription = "Copy",
-                            modifier = Modifier.size(13.dp),
-                            tint = MaterialTheme.colorScheme.outline
-                        )
-                    }
-                    IconButton(
-                        onClick = onDelete,
-                        modifier = Modifier.size(22.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.DeleteOutline,
-                            contentDescription = "Delete",
-                            modifier = Modifier.size(13.dp),
-                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
-                        )
+                        IconButton(
+                            onClick = onTogglePin,
+                            modifier = Modifier.size(22.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (clip.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                                contentDescription = "Pin",
+                                modifier = Modifier.size(13.dp),
+                                tint = if (clip.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        IconButton(
+                            onClick = onCopy,
+                            modifier = Modifier.size(22.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.ContentCopy,
+                                contentDescription = "Copy",
+                                modifier = Modifier.size(13.dp),
+                                tint = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        IconButton(
+                            onClick = onDelete,
+                            modifier = Modifier.size(22.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.DeleteOutline,
+                                contentDescription = "Delete",
+                                modifier = Modifier.size(13.dp),
+                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f)
+                            )
+                        }
                     }
                 }
             }

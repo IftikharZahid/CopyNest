@@ -595,7 +595,8 @@ fun SettingsScreen(
                         Surface(
                             onClick = {
                                 try {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/iftikharzahid"))
+                                    val message = Uri.encode("Hello Iftikhar! I am contacting you through the CopyNest app.")
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/+93007971374?text=$message"))
                                     context.startActivity(intent)
                                 } catch (e: Exception) {
                                     Toast.makeText(context, "Could not open WhatsApp", Toast.LENGTH_SHORT).show()

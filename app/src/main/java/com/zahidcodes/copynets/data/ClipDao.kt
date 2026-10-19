@@ -45,6 +45,9 @@ interface ClipDao {
     @Query("DELETE FROM clips WHERE id = :id")
     suspend fun deleteClipById(id: Long)
 
+    @Query("DELETE FROM clips WHERE id IN (:ids)")
+    suspend fun deleteClipsByIds(ids: List<Long>)
+
     @Query("DELETE FROM clips")
     suspend fun deleteAllClips()
 }

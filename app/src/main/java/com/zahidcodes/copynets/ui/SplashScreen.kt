@@ -277,16 +277,30 @@ fun SplashScreen(
                             shape = RoundedCornerShape(32.dp)
                         )
                 ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                brush = Brush.radialGradient(
+                                    colors = listOf(
+                                        Color(0xFF0D3FA8),
+                                        Color(0xFF062364),
+                                        Color(0xFF031236)
+                                    )
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Image(
-                            painter = painterResource(id = R.drawable.app_logo),
+                            painter = painterResource(id = R.drawable.ic_launcher_fg_art),
                             contentDescription = "CopyNest Logo",
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .clip(RoundedCornerShape(32.dp))
+                                .padding(10.dp)
                                 .testTag("splash_logo_image")
                         )
+
 
                         // Phase 2 & Phase 5 subtle golden highlight sweep across the clipboard & ribbon
                         Canvas(modifier = Modifier.fillMaxSize()) {

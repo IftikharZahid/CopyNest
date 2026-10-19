@@ -27,5 +27,7 @@ class ClipRepository(private val clipDao: ClipDao) {
 
     suspend fun deleteClipById(id: Long) = clipDao.deleteClipById(id)
 
+    suspend fun deleteClipsByIds(ids: List<Long>) = clipDao.deleteClipsByIds(ids)
+
     suspend fun deleteAllClips() = clipDao.deleteAllClips()
 }

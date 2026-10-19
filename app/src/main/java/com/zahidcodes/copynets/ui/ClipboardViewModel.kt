@@ -362,6 +362,31 @@ class ClipboardViewModel(context: Context) : ViewModel() {
         }
     }
 
+    fun deleteClips(ids: Collection<Long>) {
+        if (ids.isEmpty()) return
+        val idList = ids.toList()
+        viewModelScope.launch {
+            clipboardMutex.withLock {
+                val currentClipText = readCurrentClipboardText(appContext)
+                for (id in idList) {
+                    val clip = repository.getClipById(id)
+                    if (clip != null) {
+                        val deletedText = clip.text.trim()
+                        if (currentClipText == null || deletedText == currentClipText) {
+                            lastProcessedClipText = deletedText
+                            lastInternalCopiedText = deletedText
+                        }
+                    }
+                }
+                if (!currentClipText.isNullOrEmpty()) {
+                    lastProcessedClipText = currentClipText
+                    lastInternalCopiedText = currentClipText
+                }
+                repository.deleteClipsByIds(idList)
+            }
+        }
+    }
+
     fun deleteAllClips() {
         viewModelScope.launch {
             clipboardMutex.withLock {
