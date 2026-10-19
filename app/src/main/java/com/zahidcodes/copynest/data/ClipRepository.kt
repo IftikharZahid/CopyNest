@@ -30,4 +30,47 @@ class ClipRepository(private val clipDao: ClipDao) {
     suspend fun deleteClipsByIds(ids: List<Long>) = clipDao.deleteClipsByIds(ids)
 
     suspend fun deleteAllClips() = clipDao.deleteAllClips()
+
+    suspend fun getAllCachedLinkMetadata(): List<LinkMetadataEntity> =
+        clipDao.getAllCachedLinkMetadata()
+
+    suspend fun getCachedLinkMetadata(url: String): LinkMetadataEntity? =
+        clipDao.getCachedLinkMetadata(url)
+
+    suspend fun insertCachedLinkMetadata(entity: LinkMetadataEntity) =
+        clipDao.insertCachedLinkMetadata(entity)
+
+    suspend fun updateClipLinkMetadataById(
+        clipId: Long,
+        linkUrl: String,
+        linkDomain: String,
+        linkSiteName: String,
+        linkTitle: String,
+        linkDescription: String,
+        linkFaviconBase64: String
+    ) = clipDao.updateClipLinkMetadataById(
+        clipId = clipId,
+        linkUrl = linkUrl,
+        linkDomain = linkDomain,
+        linkSiteName = linkSiteName,
+        linkTitle = linkTitle,
+        linkDescription = linkDescription,
+        linkFaviconBase64 = linkFaviconBase64
+    )
+
+    suspend fun updateClipsLinkMetadataByUrl(
+        linkUrl: String,
+        linkDomain: String,
+        linkSiteName: String,
+        linkTitle: String,
+        linkDescription: String,
+        linkFaviconBase64: String
+    ) = clipDao.updateClipsLinkMetadataByUrl(
+        linkUrl = linkUrl,
+        linkDomain = linkDomain,
+        linkSiteName = linkSiteName,
+        linkTitle = linkTitle,
+        linkDescription = linkDescription,
+        linkFaviconBase64 = linkFaviconBase64
+    )
 }

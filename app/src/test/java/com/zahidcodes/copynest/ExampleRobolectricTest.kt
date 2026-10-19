@@ -10,11 +10,15 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.core.app.ApplicationProvider
 import com.zahidcodes.copynest.data.ClipDatabase
+import com.zahidcodes.copynest.data.LinkMetadataEntity
+import com.zahidcodes.copynest.data.LinkMetadataManager
 import com.zahidcodes.copynest.ui.ClipboardViewModel
 import com.zahidcodes.copynest.ui.SplashScreen
 import com.zahidcodes.copynest.ui.theme.CopyNestTheme
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -117,5 +121,57 @@ class ExampleRobolectricTest {
 
         val clipsAfterClearAll = runBlocking { db.clipDao().getAllClipsList() }
         assertEquals("Expected Clear All Records to delete all records and leave 0 records", 0, clipsAfterClearAll.size)
+    }
+
+    @Test
+    fun `link metadata persists in Room database and state store without re-fetching and scrollToTop triggers on resume`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = ClipDatabase.getDatabase(context)
+        val testUrl = "https://github.com/zahidcodes/copynest"
+
+        runBlocking {
+            db.clipDao().deleteAllClips()
+            db.clipDao().insertCachedLinkMetadata(
+                LinkMetadataEntity(
+                    normalizedUrl = testUrl,
+                    domain = "github.com",
+                    siteName = "GitHub",
+                    title = "CopyNest Smart Clipboard Repository",
+                    description = "Saved link metadata in SQLite Room database",
+                    faviconBase64 = "",
+                    isLoaded = true
+                )
+            )
+        }
+
+        val viewModel = ClipboardViewModel(context)
+        for (i in 0 until 5) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+
+        val cached = LinkMetadataManager.getLoadedMetadata(testUrl)
+        assertNotNull("Expected link metadata to be hydrated into memory state from Room database", cached)
+        assertTrue(cached!!.isLoaded)
+        assertFalse(cached.isLoading)
+        assertEquals("CopyNest Smart Clipboard Repository", cached.title)
+
+        // Saving a clip with this URL should immediately attach cached metadata in Room DB without re-fetching
+        val initialScrollVersion = viewModel.scrollToTopVersion.value
+        viewModel.saveManualClip(title = "", text = "Check out $testUrl")
+        for (i in 0 until 5) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+
+        val savedClip = runBlocking { db.clipDao().getMostRecentClip() }
+        assertNotNull(savedClip)
+        assertTrue("Expected clip row in DB to have linkMetadataLoaded = true immediately", savedClip!!.linkMetadataLoaded)
+        assertEquals("CopyNest Smart Clipboard Repository", savedClip.linkTitle)
+        assertTrue("Expected scrollToTopVersion to increment when clip is saved", viewModel.scrollToTopVersion.value > initialScrollVersion)
+
+        val beforeResumeScrollVersion = viewModel.scrollToTopVersion.value
+        viewModel.onAppForegrounded(context)
+        assertTrue("Expected scrollToTopVersion to increment when app is reopened/foregrounded", viewModel.scrollToTopVersion.value > beforeResumeScrollVersion)
     }
 }

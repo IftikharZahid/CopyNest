@@ -15,6 +15,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -46,11 +47,15 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.zahidcodes.copynest.R
 import com.zahidcodes.copynest.data.ClipEntity
 import com.zahidcodes.copynest.data.DetectedLink
 import com.zahidcodes.copynest.data.LinkMetadata
 import com.zahidcodes.copynest.data.LinkMetadataManager
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -68,12 +73,32 @@ fun HomeScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedFilter by viewModel.selectedFilter.collectAsState()
     val linkMetadataCache by viewModel.linkMetadataCache.collectAsState()
+    val scrollToTopVersion by viewModel.scrollToTopVersion.collectAsState()
+
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedClipIds by remember { mutableStateOf(setOf<Long>()) }
 
     LaunchedEffect(Unit) {
         viewModel.onHomeScreenShown(context)
+        listState.scrollToItem(0, 0)
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) {
+                coroutineScope.launch {
+                    listState.scrollToItem(0, 0)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     LaunchedEffect(clips) {
@@ -117,6 +142,21 @@ fun HomeScreen(
 
     val pinnedClips = remember(clips) { clips.filter { it.isPinned } }
     val unpinnedClips = remember(clips) { clips.filter { !it.isPinned } }
+
+    val topClipSignature = remember(clips) {
+        clips.firstOrNull()?.let { "${it.id}_${it.timestamp}" } ?: ""
+    }
+    val latestUnpinnedSignature = remember(unpinnedClips) {
+        unpinnedClips.firstOrNull()?.let { "${it.id}_${it.timestamp}" } ?: ""
+    }
+
+    LaunchedEffect(scrollToTopVersion, topClipSignature, latestUnpinnedSignature, selectedFilter, isLoading) {
+        if (!isLoading && clips.isNotEmpty()) {
+            listState.scrollToItem(0, 0)
+            withFrameNanos { }
+            listState.scrollToItem(0, 0)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -575,8 +615,11 @@ fun HomeScreen(
                     }
                     else -> {
                         LazyColumn(
+                            state = listState,
                             verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .testTag("clips_lazy_column"),
                             contentPadding = PaddingValues(bottom = 80.dp)
                         ) {
                             if (pinnedClips.isNotEmpty()) {
@@ -587,7 +630,7 @@ fun HomeScreen(
                                         isSelectionMode = isSelectionMode,
                                         isSelected = isClipSelected,
                                         linkMetadataCache = linkMetadataCache,
-                                        onRequestLinkMetadata = { url -> viewModel.requestLinkMetadata(url) },
+                                        onRequestLinkMetadata = { url -> viewModel.requestLinkMetadata(url, clip.id) },
                                         onOpenLink = { url -> LinkMetadataManager.openUrl(context, url) },
                                         onClick = {
                                             if (isSelectionMode) {
@@ -655,7 +698,7 @@ fun HomeScreen(
                                     isSelectionMode = isSelectionMode,
                                     isSelected = isClipSelected,
                                     linkMetadataCache = linkMetadataCache,
-                                    onRequestLinkMetadata = { url -> viewModel.requestLinkMetadata(url) },
+                                    onRequestLinkMetadata = { url -> viewModel.requestLinkMetadata(url, clip.id) },
                                     onOpenLink = { url -> LinkMetadataManager.openUrl(context, url) },
                                     onClick = {
                                         if (isSelectionMode) {
@@ -882,10 +925,28 @@ fun ClipCard(
     val formattedDate = remember(clip.timestamp) { dateFormat.format(Date(clip.timestamp)) }
     val detectedLinks = remember(clip.text) { LinkMetadataManager.extractLinks(clip.text) }
     val primaryLink = detectedLinks.firstOrNull()
-    val primaryMetadata = primaryLink?.let { linkMetadataCache[it.normalizedUrl] }
+    val primaryMetadata = remember(
+        primaryLink?.normalizedUrl,
+        linkMetadataCache,
+        clip.linkMetadataLoaded,
+        clip.linkUrl,
+        clip.linkDomain,
+        clip.linkSiteName,
+        clip.linkTitle,
+        clip.linkDescription,
+        clip.linkFaviconBase64
+    ) {
+        val url = primaryLink?.normalizedUrl ?: return@remember null
+        val cachedInMemory = linkMetadataCache[url]
+        when {
+            cachedInMemory != null && cachedInMemory.isLoaded -> cachedInMemory
+            clip.linkMetadataLoaded -> LinkMetadataManager.fromClipEntity(clip, url) ?: cachedInMemory
+            else -> cachedInMemory
+        }
+    }
 
-    LaunchedEffect(primaryLink?.normalizedUrl) {
-        if (primaryLink != null) {
+    LaunchedEffect(primaryLink?.normalizedUrl, clip.id, clip.linkMetadataLoaded) {
+        if (primaryLink != null && !clip.linkMetadataLoaded && primaryMetadata?.isLoaded != true) {
             onRequestLinkMetadata(primaryLink.normalizedUrl)
         }
     }

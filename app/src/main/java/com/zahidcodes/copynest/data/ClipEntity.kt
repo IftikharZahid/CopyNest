@@ -12,5 +12,25 @@ data class ClipEntity(
     val timestamp: Long = System.currentTimeMillis(),
     val isPinned: Boolean = false,
     val contentType: String = "TEXT", // TEXT, URL, CODE, NOTE
-    val category: String = "General"
+    val category: String = "General",
+    val linkUrl: String = "",
+    val linkDomain: String = "",
+    val linkSiteName: String = "",
+    val linkTitle: String = "",
+    val linkDescription: String = "",
+    val linkFaviconBase64: String = "",
+    val linkMetadataLoaded: Boolean = false
+)
+
+@Entity(tableName = "link_metadata_cache")
+data class LinkMetadataEntity(
+    @PrimaryKey
+    val normalizedUrl: String,
+    val domain: String,
+    val siteName: String,
+    val title: String,
+    val description: String = "",
+    val faviconBase64: String = "",
+    val isLoaded: Boolean = true,
+    val updatedAt: Long = System.currentTimeMillis()
 )

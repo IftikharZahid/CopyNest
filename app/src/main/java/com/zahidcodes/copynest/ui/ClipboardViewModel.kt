@@ -10,6 +10,7 @@ import com.zahidcodes.copynest.data.ClipDatabase
 import com.zahidcodes.copynest.data.ClipEntity
 import com.zahidcodes.copynest.data.ClipRepository
 import com.zahidcodes.copynest.data.LinkMetadata
+import com.zahidcodes.copynest.data.LinkMetadataEntity
 import com.zahidcodes.copynest.data.LinkMetadataManager
 import com.zahidcodes.copynest.data.UserPreferences
 import kotlinx.coroutines.CompletableDeferred
@@ -39,6 +40,14 @@ class ClipboardViewModel(context: Context) : ViewModel() {
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    // Increments whenever the app opens, resumes, or a clip is added/moved to top so HomeScreen scrolls to index 0
+    private val _scrollToTopVersion = MutableStateFlow(0L)
+    val scrollToTopVersion: StateFlow<Long> = _scrollToTopVersion.asStateFlow()
+
+    fun requestScrollToTop() {
+        _scrollToTopVersion.update { it + 1L }
+    }
+
     val autoCapture = userPreferences.autoCaptureFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -64,6 +73,7 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                     // Clean up duplicate records and auto-assign category (Text, Links, Code) for existing records
                     val all = repository.getAllClipsList()
                     val seenTexts = HashSet<String>()
+                    val activeClips = mutableListOf<ClipEntity>()
                     for (item in all) {
                         val normalized = item.text.trim()
                         if (!seenTexts.add(normalized)) {
@@ -78,16 +88,33 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                                 item.category.equals("Code", ignoreCase = true)
 
                             val targetCategory = if (shouldAutoUpdateCategory) autoCategory else item.category
-                            if (item.contentType != detectedType || item.category != targetCategory) {
-                                repository.updateClip(
-                                    item.copy(
-                                        contentType = detectedType,
-                                        category = targetCategory
-                                    )
+                            val detectedLink = LinkMetadataManager.extractFirstLink(normalized)
+                            val targetLinkUrl = detectedLink?.normalizedUrl ?: ""
+                            val targetLinkDomain = detectedLink?.domain ?: ""
+
+                            val updatedItem = if (
+                                item.contentType != detectedType ||
+                                item.category != targetCategory ||
+                                (targetLinkUrl.isNotBlank() && item.linkUrl != targetLinkUrl)
+                            ) {
+                                val copyItem = item.copy(
+                                    contentType = detectedType,
+                                    category = targetCategory,
+                                    linkUrl = if (targetLinkUrl.isNotBlank()) targetLinkUrl else item.linkUrl,
+                                    linkDomain = if (targetLinkDomain.isNotBlank()) targetLinkDomain else item.linkDomain
                                 )
+                                repository.updateClip(copyItem)
+                                copyItem
+                            } else {
+                                item
                             }
+                            activeClips.add(updatedItem)
                         }
                     }
+
+                    // Hydrate in-memory LinkMetadataManager state store from Room database so cached links never re-fetch
+                    LinkMetadataManager.hydrateFromDatabase(repository, activeClips)
+
                     lastProcessedClipText = repository.getMostRecentClip()?.text?.trim()
                 }
                 // Wait for the Room flow to emit its initial snapshot
@@ -134,7 +161,9 @@ class ClipboardViewModel(context: Context) : ViewModel() {
             result = result.filter {
                 it.title.contains(query, ignoreCase = true) ||
                     it.text.contains(query, ignoreCase = true) ||
-                    it.category.contains(query, ignoreCase = true)
+                    it.category.contains(query, ignoreCase = true) ||
+                    it.linkTitle.contains(query, ignoreCase = true) ||
+                    it.linkSiteName.contains(query, ignoreCase = true)
             }
         }
 
@@ -144,6 +173,7 @@ class ClipboardViewModel(context: Context) : ViewModel() {
             "URL" -> result = result.filter {
                 it.contentType == "URL" ||
                     it.category.equals("Links", ignoreCase = true) ||
+                    it.linkUrl.isNotBlank() ||
                     LinkMetadataManager.extractFirstLink(it.text) != null
             }
             "CODE" -> result = result.filter {
@@ -163,11 +193,17 @@ class ClipboardViewModel(context: Context) : ViewModel() {
 
     val linkMetadataCache: StateFlow<Map<String, LinkMetadata>> = LinkMetadataManager.metadataCache
 
-    fun requestLinkMetadata(url: String) {
-        LinkMetadataManager.requestMetadata(url, viewModelScope)
+    fun requestLinkMetadata(url: String, clipId: Long? = null) {
+        LinkMetadataManager.requestMetadata(
+            url = url,
+            scope = viewModelScope,
+            repository = repository,
+            clipId = clipId
+        )
     }
 
     fun onHomeScreenShown(context: Context) {
+        requestScrollToTop()
         if (hasCompletedInitialHomeLoad) {
             _isLoading.value = false
             checkClipboardAndSave(context, force = false)
@@ -184,15 +220,23 @@ class ClipboardViewModel(context: Context) : ViewModel() {
             }
             hasCompletedInitialHomeLoad = true
             _isLoading.value = false
+            requestScrollToTop()
         }
+    }
+
+    fun onAppForegrounded(context: Context) {
+        requestScrollToTop()
+        checkClipboardAndSave(context, force = false)
     }
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
+        requestScrollToTop()
     }
 
     fun setFilter(filter: String) {
         _selectedFilter.value = filter
+        requestScrollToTop()
     }
 
     fun markInternalCopy(text: String) {
@@ -215,6 +259,20 @@ class ClipboardViewModel(context: Context) : ViewModel() {
         } catch (e: Exception) {
             null
         }
+    }
+
+    private suspend fun resolveCachedLinkMetadataForUrl(normalizedUrl: String): LinkMetadata? {
+        if (normalizedUrl.isBlank()) return null
+        LinkMetadataManager.getLoadedMetadata(normalizedUrl)?.let { return it }
+        val dbEntity = try {
+            repository.getCachedLinkMetadata(normalizedUrl)
+        } catch (_: Exception) {
+            null
+        }
+        if (dbEntity != null && dbEntity.isLoaded) {
+            return LinkMetadataManager.fromCacheEntity(dbEntity)
+        }
+        return null
     }
 
     private suspend fun checkClipboardAndSaveSuspend(
@@ -245,31 +303,57 @@ class ClipboardViewModel(context: Context) : ViewModel() {
 
                     val contentType = detectContentType(text)
                     val autoCategory = autoCategoryForContentType(contentType)
+                    val detectedLink = LinkMetadataManager.extractFirstLink(text)
+                    val linkUrl = detectedLink?.normalizedUrl ?: ""
+                    val linkDomain = detectedLink?.domain ?: ""
+                    val cachedMeta = resolveCachedLinkMetadataForUrl(linkUrl)
+
                     val existingClip = repository.getClipByText(text)
                     if (existingClip == null) {
                         val newClip = ClipEntity(
                             title = "",
                             text = text,
                             contentType = contentType,
-                            category = autoCategory
+                            category = autoCategory,
+                            linkUrl = linkUrl,
+                            linkDomain = cachedMeta?.domain ?: linkDomain,
+                            linkSiteName = cachedMeta?.siteName ?: "",
+                            linkTitle = cachedMeta?.title ?: "",
+                            linkDescription = cachedMeta?.description ?: "",
+                            linkFaviconBase64 = cachedMeta?.faviconBase64 ?: "",
+                            linkMetadataLoaded = cachedMeta != null
                         )
-                        repository.insertClip(newClip)
+                        val insertedId = repository.insertClip(newClip)
                         lastProcessedClipText = text
+                        requestScrollToTop()
+                        if (linkUrl.isNotBlank() && cachedMeta == null) {
+                            requestLinkMetadata(linkUrl, insertedId)
+                        }
                         onResult?.invoke(true, "Saved as $autoCategory!")
                     } else {
                         lastProcessedClipText = text
+                        val updatedClip = existingClip.copy(
+                            contentType = contentType,
+                            category = if (existingClip.category.isBlank() || existingClip.category.equals("General", ignoreCase = true)) {
+                                autoCategory
+                            } else {
+                                existingClip.category
+                            },
+                            timestamp = System.currentTimeMillis(),
+                            linkUrl = linkUrl.ifBlank { existingClip.linkUrl },
+                            linkDomain = cachedMeta?.domain ?: linkDomain.ifBlank { existingClip.linkDomain },
+                            linkSiteName = cachedMeta?.siteName ?: existingClip.linkSiteName,
+                            linkTitle = cachedMeta?.title ?: existingClip.linkTitle,
+                            linkDescription = cachedMeta?.description ?: existingClip.linkDescription,
+                            linkFaviconBase64 = cachedMeta?.faviconBase64 ?: existingClip.linkFaviconBase64,
+                            linkMetadataLoaded = existingClip.linkMetadataLoaded || cachedMeta != null
+                        )
+                        repository.updateClip(updatedClip)
+                        requestScrollToTop()
+                        if (linkUrl.isNotBlank() && !updatedClip.linkMetadataLoaded) {
+                            requestLinkMetadata(linkUrl, existingClip.id)
+                        }
                         if (force) {
-                            repository.updateClip(
-                                existingClip.copy(
-                                    contentType = contentType,
-                                    category = if (existingClip.category.isBlank() || existingClip.category.equals("General", ignoreCase = true)) {
-                                        autoCategory
-                                    } else {
-                                        existingClip.category
-                                    },
-                                    timestamp = System.currentTimeMillis()
-                                )
-                            )
                             onResult?.invoke(true, "Clip moved to top!")
                         }
                     }
@@ -309,14 +393,30 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                 } else {
                     category
                 }
+                val detectedLink = LinkMetadataManager.extractFirstLink(trimmedText)
+                val linkUrl = detectedLink?.normalizedUrl ?: ""
+                val linkDomain = detectedLink?.domain ?: ""
+                val cachedMeta = resolveCachedLinkMetadataForUrl(linkUrl)
+
                 val newClip = ClipEntity(
                     title = title.trim(),
                     text = trimmedText,
                     contentType = contentType,
-                    category = resolvedCategory
+                    category = resolvedCategory,
+                    linkUrl = linkUrl,
+                    linkDomain = cachedMeta?.domain ?: linkDomain,
+                    linkSiteName = cachedMeta?.siteName ?: "",
+                    linkTitle = cachedMeta?.title ?: "",
+                    linkDescription = cachedMeta?.description ?: "",
+                    linkFaviconBase64 = cachedMeta?.faviconBase64 ?: "",
+                    linkMetadataLoaded = cachedMeta != null
                 )
-                repository.insertClip(newClip)
+                val insertedId = repository.insertClip(newClip)
                 lastProcessedClipText = trimmedText
+                requestScrollToTop()
+                if (linkUrl.isNotBlank() && cachedMeta == null) {
+                    requestLinkMetadata(linkUrl, insertedId)
+                }
             }
         }
     }
@@ -344,15 +444,50 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                 } else {
                     newCategory
                 }
-                repository.updateClip(
-                    clip.copy(
-                        title = newTitle.trim(),
-                        text = trimmedText,
-                        contentType = contentType,
-                        category = resolvedCategory
-                    )
+                val detectedLink = LinkMetadataManager.extractFirstLink(trimmedText)
+                val linkUrl = detectedLink?.normalizedUrl ?: ""
+                val linkDomain = detectedLink?.domain ?: ""
+                val sameUrl = linkUrl.isNotBlank() && linkUrl == clip.linkUrl && clip.linkMetadataLoaded
+                val cachedMeta = if (sameUrl) null else resolveCachedLinkMetadataForUrl(linkUrl)
+
+                val updated = clip.copy(
+                    title = newTitle.trim(),
+                    text = trimmedText,
+                    contentType = contentType,
+                    category = resolvedCategory,
+                    linkUrl = linkUrl,
+                    linkDomain = when {
+                        sameUrl -> clip.linkDomain
+                        cachedMeta != null -> cachedMeta.domain
+                        else -> linkDomain
+                    },
+                    linkSiteName = when {
+                        sameUrl -> clip.linkSiteName
+                        cachedMeta != null -> cachedMeta.siteName
+                        else -> ""
+                    },
+                    linkTitle = when {
+                        sameUrl -> clip.linkTitle
+                        cachedMeta != null -> cachedMeta.title
+                        else -> ""
+                    },
+                    linkDescription = when {
+                        sameUrl -> clip.linkDescription
+                        cachedMeta != null -> cachedMeta.description
+                        else -> ""
+                    },
+                    linkFaviconBase64 = when {
+                        sameUrl -> clip.linkFaviconBase64
+                        cachedMeta != null -> cachedMeta.faviconBase64
+                        else -> ""
+                    },
+                    linkMetadataLoaded = sameUrl || cachedMeta != null
                 )
+                repository.updateClip(updated)
                 lastProcessedClipText = trimmedText
+                if (linkUrl.isNotBlank() && !updated.linkMetadataLoaded) {
+                    requestLinkMetadata(linkUrl, clip.id)
+                }
             }
         }
     }
@@ -400,9 +535,6 @@ class ClipboardViewModel(context: Context) : ViewModel() {
     fun deleteAllClips() {
         viewModelScope.launch {
             clipboardMutex.withLock {
-                // Record current system clipboard text and most recent DB clip as ignored
-                // BEFORE deleting all records, so window focus / resume events after closing
-                // the confirmation dialog never re-insert the clipboard content!
                 val currentClipText = readCurrentClipboardText(appContext)
                     ?: repository.getMostRecentClip()?.text?.trim()
                 if (!currentClipText.isNullOrEmpty()) {
@@ -410,7 +542,6 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                     lastInternalCopiedText = currentClipText
                 }
 
-                // Also clear the system clipboard if allowed so stale clipboard text is gone
                 try {
                     val clipboardManager = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -422,7 +553,6 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                     // Ignore if OS restricts clearing primary clip
                 }
 
-                // Delete all records from Room database
                 repository.deleteAllClips()
             }
         }
@@ -452,6 +582,13 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                 put("contentType", item.contentType)
                 put("isPinned", item.isPinned)
                 put("timestamp", item.timestamp)
+                put("linkUrl", item.linkUrl)
+                put("linkDomain", item.linkDomain)
+                put("linkSiteName", item.linkSiteName)
+                put("linkTitle", item.linkTitle)
+                put("linkDescription", item.linkDescription)
+                put("linkFaviconBase64", item.linkFaviconBase64)
+                put("linkMetadataLoaded", item.linkMetadataLoaded)
             }
             jsonArray.put(obj)
         }
@@ -478,6 +615,15 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                         }
                         val isPinned = obj.optBoolean("isPinned", false)
                         val timestamp = obj.optLong("timestamp", System.currentTimeMillis())
+                        val detectedLink = LinkMetadataManager.extractFirstLink(text)
+                        val linkUrl = obj.optString("linkUrl", detectedLink?.normalizedUrl ?: "")
+                        val linkDomain = obj.optString("linkDomain", detectedLink?.domain ?: "")
+                        val linkSiteName = obj.optString("linkSiteName", "")
+                        val linkTitle = obj.optString("linkTitle", "")
+                        val linkDescription = obj.optString("linkDescription", "")
+                        val linkFaviconBase64 = obj.optString("linkFaviconBase64", "")
+                        val linkMetadataLoaded = obj.optBoolean("linkMetadataLoaded", false)
+
                         importedList.add(
                             ClipEntity(
                                 title = title,
@@ -485,7 +631,14 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                                 category = category,
                                 contentType = contentType,
                                 isPinned = isPinned,
-                                timestamp = timestamp
+                                timestamp = timestamp,
+                                linkUrl = linkUrl,
+                                linkDomain = linkDomain,
+                                linkSiteName = linkSiteName,
+                                linkTitle = linkTitle,
+                                linkDescription = linkDescription,
+                                linkFaviconBase64 = linkFaviconBase64,
+                                linkMetadataLoaded = linkMetadataLoaded
                             )
                         )
                     }
@@ -498,6 +651,7 @@ class ClipboardViewModel(context: Context) : ViewModel() {
             if (paragraphs.isNotEmpty()) {
                 paragraphs.forEach { p ->
                     val type = detectContentType(p)
+                    val detectedLink = LinkMetadataManager.extractFirstLink(p)
                     importedList.add(
                         ClipEntity(
                             title = "",
@@ -505,7 +659,9 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                             category = autoCategoryForContentType(type),
                             contentType = type,
                             isPinned = false,
-                            timestamp = System.currentTimeMillis()
+                            timestamp = System.currentTimeMillis(),
+                            linkUrl = detectedLink?.normalizedUrl ?: "",
+                            linkDomain = detectedLink?.domain ?: ""
                         )
                     )
                 }
@@ -513,6 +669,7 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                 val lines = content.split("\n").map { it.trim() }.filter { it.isNotBlank() }
                 lines.forEach { l ->
                     val type = detectContentType(l)
+                    val detectedLink = LinkMetadataManager.extractFirstLink(l)
                     importedList.add(
                         ClipEntity(
                             title = "",
@@ -520,7 +677,9 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                             category = autoCategoryForContentType(type),
                             contentType = type,
                             isPinned = false,
-                            timestamp = System.currentTimeMillis()
+                            timestamp = System.currentTimeMillis(),
+                            linkUrl = detectedLink?.normalizedUrl ?: "",
+                            linkDomain = detectedLink?.domain ?: ""
                         )
                     )
                 }
@@ -529,6 +688,8 @@ class ClipboardViewModel(context: Context) : ViewModel() {
 
         if (importedList.isNotEmpty()) {
             repository.insertClips(importedList)
+            LinkMetadataManager.hydrateFromDatabase(repository, repository.getAllClipsList())
+            requestScrollToTop()
         }
         return importedList.size
     }

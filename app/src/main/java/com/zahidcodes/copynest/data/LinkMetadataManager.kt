@@ -2,9 +2,11 @@ package com.zahidcodes.copynest.data
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.text.Html
+import android.util.Base64
 import android.widget.Toast
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -19,7 +21,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.ByteArrayOutputStream
 import java.net.URI
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 data class DetectedLink(
@@ -37,6 +41,7 @@ data class LinkMetadata(
     val title: String,
     val description: String = "",
     val favicon: ImageBitmap? = null,
+    val faviconBase64: String = "",
     val isLoading: Boolean = false,
     val isLoaded: Boolean = false
 )
@@ -56,9 +61,11 @@ object LinkMetadataManager {
             .build()
     }
 
+    // Global in-memory state store (acts like a Redux slice for link metadata across the app)
     private val _metadataCache = MutableStateFlow<Map<String, LinkMetadata>>(emptyMap())
     val metadataCache: StateFlow<Map<String, LinkMetadata>> = _metadataCache.asStateFlow()
 
+    private val faviconBitmapCache = ConcurrentHashMap<String, ImageBitmap>()
     private val inFlightUrls = mutableSetOf<String>()
     private val fetchMutex = Mutex()
 
@@ -191,59 +198,309 @@ object LinkMetadataManager {
         }
     }
 
-    fun requestMetadata(url: String, scope: CoroutineScope) {
+    fun decodeFaviconBase64(cacheKey: String, base64: String): ImageBitmap? {
+        if (base64.isBlank()) return null
+        faviconBitmapCache[cacheKey]?.let { return it }
+        return try {
+            val bytes = Base64.decode(base64, Base64.DEFAULT)
+            val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            if (bmp != null) {
+                faviconBitmapCache[cacheKey] = bmp
+            }
+            bmp
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun fromClipEntity(clip: ClipEntity, expectedUrl: String? = null): LinkMetadata? {
+        if (!clip.linkMetadataLoaded) return null
+        val url = clip.linkUrl.ifBlank { expectedUrl ?: return null }
+        if (expectedUrl != null && url != expectedUrl) return null
+        val domain = clip.linkDomain.ifBlank { extractDomain(url) }
+        if (domain.isBlank()) return null
+        val siteName = clip.linkSiteName.ifBlank { formatFallbackSiteName(domain) }
+        val title = clip.linkTitle.ifBlank { formatFallbackTitle(url, domain) }
+        val favicon = decodeFaviconBase64(url, clip.linkFaviconBase64)
+        return LinkMetadata(
+            url = url,
+            domain = domain,
+            siteName = siteName,
+            title = title,
+            description = clip.linkDescription,
+            favicon = favicon,
+            faviconBase64 = clip.linkFaviconBase64,
+            isLoading = false,
+            isLoaded = true
+        )
+    }
+
+    fun fromCacheEntity(entity: LinkMetadataEntity): LinkMetadata {
+        val domain = entity.domain.ifBlank { extractDomain(entity.normalizedUrl) }
+        val siteName = entity.siteName.ifBlank { formatFallbackSiteName(domain) }
+        val title = entity.title.ifBlank { formatFallbackTitle(entity.normalizedUrl, domain) }
+        val favicon = decodeFaviconBase64(entity.normalizedUrl, entity.faviconBase64)
+        return LinkMetadata(
+            url = entity.normalizedUrl,
+            domain = domain,
+            siteName = siteName,
+            title = title,
+            description = entity.description,
+            favicon = favicon,
+            faviconBase64 = entity.faviconBase64,
+            isLoading = false,
+            isLoaded = true
+        )
+    }
+
+    suspend fun hydrateFromDatabase(repository: ClipRepository, clips: List<ClipEntity>) {
+        val restoredMap = mutableMapOf<String, LinkMetadata>()
+
+        // 1. Load all entries from the dedicated link_metadata_cache table
+        val cachedEntities = try {
+            repository.getAllCachedLinkMetadata()
+        } catch (_: Exception) {
+            emptyList()
+        }
+        for (entity in cachedEntities) {
+            restoredMap[entity.normalizedUrl] = fromCacheEntity(entity)
+        }
+
+        // 2. Also load any persisted metadata directly from ClipEntity rows
+        for (clip in clips) {
+            if (clip.linkMetadataLoaded && clip.linkUrl.isNotBlank()) {
+                val fromClip = fromClipEntity(clip)
+                if (fromClip != null) {
+                    if (!restoredMap.containsKey(fromClip.url)) {
+                        restoredMap[fromClip.url] = fromClip
+                    }
+                    // Ensure link_metadata_cache table also has this entry
+                    if (cachedEntities.none { it.normalizedUrl == fromClip.url }) {
+                        try {
+                            repository.insertCachedLinkMetadata(
+                                LinkMetadataEntity(
+                                    normalizedUrl = fromClip.url,
+                                    domain = fromClip.domain,
+                                    siteName = fromClip.siteName,
+                                    title = fromClip.title,
+                                    description = fromClip.description,
+                                    faviconBase64 = fromClip.faviconBase64,
+                                    isLoaded = true
+                                )
+                            )
+                        } catch (_: Exception) {
+                            // Ignore DB write error
+                        }
+                    }
+                }
+            } else {
+                // If clip doesn't have linkMetadataLoaded marked yet, check if its URL is already in restoredMap
+                val detected = extractFirstLink(clip.text)
+                if (detected != null) {
+                    val cached = restoredMap[detected.normalizedUrl]
+                    if (cached != null && cached.isLoaded) {
+                        try {
+                            repository.updateClipLinkMetadataById(
+                                clipId = clip.id,
+                                linkUrl = cached.url,
+                                linkDomain = cached.domain,
+                                linkSiteName = cached.siteName,
+                                linkTitle = cached.title,
+                                linkDescription = cached.description,
+                                linkFaviconBase64 = cached.faviconBase64
+                            )
+                        } catch (_: Exception) {
+                            // Ignore DB write error
+                        }
+                    }
+                }
+            }
+        }
+
+        if (restoredMap.isNotEmpty()) {
+            _metadataCache.update { current ->
+                restoredMap + current.filterValues { it.isLoaded }
+            }
+        }
+    }
+
+    fun getLoadedMetadata(url: String): LinkMetadata? {
+        val normalized = normalizeUrl(url)
+        return _metadataCache.value[normalized]?.takeIf { it.isLoaded }
+    }
+
+    fun requestMetadata(
+        url: String,
+        scope: CoroutineScope,
+        repository: ClipRepository? = null,
+        clipId: Long? = null
+    ) {
         val normalized = normalizeUrl(url)
         val domain = extractDomain(normalized)
         if (domain.isBlank()) return
 
         val existing = _metadataCache.value[normalized]
-        if (existing != null && (existing.isLoaded || existing.isLoading)) {
+        if (existing != null && existing.isLoaded) {
+            if (repository != null && clipId != null) {
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        repository.updateClipLinkMetadataById(
+                            clipId = clipId,
+                            linkUrl = existing.url,
+                            linkDomain = existing.domain,
+                            linkSiteName = existing.siteName,
+                            linkTitle = existing.title,
+                            linkDescription = existing.description,
+                            linkFaviconBase64 = existing.faviconBase64
+                        )
+                    } catch (_: Exception) {
+                        // Ignore
+                    }
+                }
+            }
+            return
+        }
+
+        if (existing != null && existing.isLoading) {
             return
         }
 
         scope.launch(Dispatchers.IO) {
             val shouldFetch = fetchMutex.withLock {
-                val cached = _metadataCache.value[normalized]
-                if (cached != null && (cached.isLoaded || cached.isLoading)) {
-                    false
-                } else if (inFlightUrls.contains(normalized)) {
-                    false
-                } else {
-                    inFlightUrls.add(normalized)
-                    _metadataCache.update { current ->
-                        current + (normalized to LinkMetadata(
-                            url = normalized,
-                            domain = domain,
-                            siteName = formatFallbackSiteName(domain),
-                            title = formatFallbackTitle(normalized, domain),
-                            description = "",
-                            isLoading = true,
-                            isLoaded = false
-                        ))
+                val cachedInMemory = _metadataCache.value[normalized]
+                if (cachedInMemory != null && cachedInMemory.isLoaded) {
+                    if (repository != null && clipId != null) {
+                        try {
+                            repository.updateClipLinkMetadataById(
+                                clipId = clipId,
+                                linkUrl = cachedInMemory.url,
+                                linkDomain = cachedInMemory.domain,
+                                linkSiteName = cachedInMemory.siteName,
+                                linkTitle = cachedInMemory.title,
+                                linkDescription = cachedInMemory.description,
+                                linkFaviconBase64 = cachedInMemory.faviconBase64
+                            )
+                        } catch (_: Exception) {
+                            // Ignore
+                        }
                     }
-                    true
+                    return@withLock false
                 }
-            }
 
-            if (!shouldFetch) return@launch
-
-            try {
-                val fetched = fetchUrlMetadataInternal(normalized, domain)
-                _metadataCache.update { current ->
-                    current + (normalized to fetched)
+                if (cachedInMemory != null && cachedInMemory.isLoading) {
+                    return@withLock false
                 }
-            } catch (e: Exception) {
+
+                if (inFlightUrls.contains(normalized)) {
+                    return@withLock false
+                }
+
+                // Check Room Database persistent cache BEFORE triggering any network request!
+                if (repository != null) {
+                    val dbCached = try {
+                        repository.getCachedLinkMetadata(normalized)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    if (dbCached != null && dbCached.isLoaded) {
+                        val hydrated = fromCacheEntity(dbCached)
+                        _metadataCache.update { current ->
+                            current + (normalized to hydrated)
+                        }
+                        if (clipId != null) {
+                            try {
+                                repository.updateClipLinkMetadataById(
+                                    clipId = clipId,
+                                    linkUrl = hydrated.url,
+                                    linkDomain = hydrated.domain,
+                                    linkSiteName = hydrated.siteName,
+                                    linkTitle = hydrated.title,
+                                    linkDescription = hydrated.description,
+                                    linkFaviconBase64 = hydrated.faviconBase64
+                                )
+                            } catch (_: Exception) {
+                                // Ignore
+                            }
+                        }
+                        return@withLock false
+                    }
+                }
+
+                inFlightUrls.add(normalized)
                 _metadataCache.update { current ->
                     current + (normalized to LinkMetadata(
                         url = normalized,
                         domain = domain,
                         siteName = formatFallbackSiteName(domain),
                         title = formatFallbackTitle(normalized, domain),
-                        description = normalized,
-                        favicon = null,
-                        isLoading = false,
-                        isLoaded = true
+                        description = "",
+                        isLoading = true,
+                        isLoaded = false
                     ))
+                }
+                true
+            }
+
+            if (!shouldFetch) return@launch
+
+            val finalMetadata = try {
+                fetchUrlMetadataInternal(normalized, domain)
+            } catch (e: Exception) {
+                LinkMetadata(
+                    url = normalized,
+                    domain = domain,
+                    siteName = formatFallbackSiteName(domain),
+                    title = formatFallbackTitle(normalized, domain),
+                    description = normalized,
+                    favicon = null,
+                    faviconBase64 = "",
+                    isLoading = false,
+                    isLoaded = true
+                )
+            }
+
+            try {
+                // 1. Save in-memory global StateFlow store
+                _metadataCache.update { current ->
+                    current + (normalized to finalMetadata)
+                }
+
+                // 2. Persist permanently in Room Database (both link_metadata_cache and clips tables)
+                if (repository != null) {
+                    try {
+                        repository.insertCachedLinkMetadata(
+                            LinkMetadataEntity(
+                                normalizedUrl = finalMetadata.url,
+                                domain = finalMetadata.domain,
+                                siteName = finalMetadata.siteName,
+                                title = finalMetadata.title,
+                                description = finalMetadata.description,
+                                faviconBase64 = finalMetadata.faviconBase64,
+                                isLoaded = true
+                            )
+                        )
+                        if (clipId != null) {
+                            repository.updateClipLinkMetadataById(
+                                clipId = clipId,
+                                linkUrl = finalMetadata.url,
+                                linkDomain = finalMetadata.domain,
+                                linkSiteName = finalMetadata.siteName,
+                                linkTitle = finalMetadata.title,
+                                linkDescription = finalMetadata.description,
+                                linkFaviconBase64 = finalMetadata.faviconBase64
+                            )
+                        }
+                        repository.updateClipsLinkMetadataByUrl(
+                            linkUrl = finalMetadata.url,
+                            linkDomain = finalMetadata.domain,
+                            linkSiteName = finalMetadata.siteName,
+                            linkTitle = finalMetadata.title,
+                            linkDescription = finalMetadata.description,
+                            linkFaviconBase64 = finalMetadata.faviconBase64
+                        )
+                    } catch (_: Exception) {
+                        // Ignore DB errors
+                    }
                 }
             } finally {
                 fetchMutex.withLock {
@@ -303,7 +560,7 @@ object LinkMetadataManager {
             // Fall back to domain-based metadata below if HTML fetch fails
         }
 
-        val faviconBitmap = fetchFaviconBitmap(domain)
+        val (faviconBitmap, faviconBase64) = fetchFaviconBitmapAndBase64(normalizedUrl, domain)
 
         val resolvedSiteName = siteName.ifBlank { formatFallbackSiteName(domain) }
         val resolvedTitle = title.ifBlank { formatFallbackTitle(normalizedUrl, domain) }
@@ -316,12 +573,13 @@ object LinkMetadataManager {
             title = resolvedTitle,
             description = resolvedDescription,
             favicon = faviconBitmap,
+            faviconBase64 = faviconBase64,
             isLoading = false,
             isLoaded = true
         )
     }
 
-    private fun fetchFaviconBitmap(domain: String): ImageBitmap? {
+    private fun fetchFaviconBitmapAndBase64(cacheKey: String, domain: String): Pair<ImageBitmap?, String> {
         return try {
             val faviconUrl = "https://www.google.com/s2/favicons?domain=${Uri.encode(domain)}&sz=64"
             val request = Request.Builder()
@@ -332,16 +590,26 @@ object LinkMetadataManager {
                 if (response.isSuccessful) {
                     val bytes = response.body?.bytes()
                     if (bytes != null && bytes.isNotEmpty()) {
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                        val rawBitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        if (rawBitmap != null) {
+                            val output = ByteArrayOutputStream()
+                            rawBitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                            val base64 = Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
+                            val imageBitmap = rawBitmap.asImageBitmap()
+                            faviconBitmapCache[cacheKey] = imageBitmap
+                            imageBitmap to base64
+                        } else {
+                            null to ""
+                        }
                     } else {
-                        null
+                        null to ""
                     }
                 } else {
-                    null
+                    null to ""
                 }
             }
         } catch (_: Exception) {
-            null
+            null to ""
         }
     }
 

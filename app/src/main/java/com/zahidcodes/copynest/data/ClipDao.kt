@@ -50,4 +50,57 @@ interface ClipDao {
 
     @Query("DELETE FROM clips")
     suspend fun deleteAllClips()
+
+    @Query("SELECT * FROM link_metadata_cache")
+    suspend fun getAllCachedLinkMetadata(): List<LinkMetadataEntity>
+
+    @Query("SELECT * FROM link_metadata_cache WHERE normalizedUrl = :url LIMIT 1")
+    suspend fun getCachedLinkMetadata(url: String): LinkMetadataEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCachedLinkMetadata(entity: LinkMetadataEntity)
+
+    @Query(
+        """
+        UPDATE clips 
+        SET linkUrl = :linkUrl,
+            linkDomain = :linkDomain,
+            linkSiteName = :linkSiteName,
+            linkTitle = :linkTitle,
+            linkDescription = :linkDescription,
+            linkFaviconBase64 = :linkFaviconBase64,
+            linkMetadataLoaded = 1
+        WHERE id = :clipId
+        """
+    )
+    suspend fun updateClipLinkMetadataById(
+        clipId: Long,
+        linkUrl: String,
+        linkDomain: String,
+        linkSiteName: String,
+        linkTitle: String,
+        linkDescription: String,
+        linkFaviconBase64: String
+    )
+
+    @Query(
+        """
+        UPDATE clips 
+        SET linkDomain = :linkDomain,
+            linkSiteName = :linkSiteName,
+            linkTitle = :linkTitle,
+            linkDescription = :linkDescription,
+            linkFaviconBase64 = :linkFaviconBase64,
+            linkMetadataLoaded = 1
+        WHERE linkUrl = :linkUrl
+        """
+    )
+    suspend fun updateClipsLinkMetadataByUrl(
+        linkUrl: String,
+        linkDomain: String,
+        linkSiteName: String,
+        linkTitle: String,
+        linkDescription: String,
+        linkFaviconBase64: String
+    )
 }

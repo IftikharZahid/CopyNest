@@ -53,8 +53,8 @@ class MainActivity : ComponentActivity() {
             val lifecycleOwner = LocalLifecycleOwner.current
             DisposableEffect(lifecycleOwner, hasCompletedSplash) {
                 val observer = LifecycleEventObserver { _, event ->
-                    if (event == Lifecycle.Event.ON_RESUME && hasCompletedSplash) {
-                        viewModel.checkClipboardAndSave(context)
+                    if ((event == Lifecycle.Event.ON_START || event == Lifecycle.Event.ON_RESUME) && hasCompletedSplash) {
+                        viewModel.onAppForegrounded(context)
                     }
                 }
                 lifecycleOwner.lifecycle.addObserver(observer)
@@ -66,7 +66,7 @@ class MainActivity : ComponentActivity() {
             val windowInfo = LocalWindowInfo.current
             LaunchedEffect(windowInfo.isWindowFocused, hasCompletedSplash) {
                 if (windowInfo.isWindowFocused && hasCompletedSplash) {
-                    viewModel.checkClipboardAndSave(context)
+                    viewModel.onAppForegrounded(context)
                 }
             }
 
@@ -93,7 +93,7 @@ class MainActivity : ComponentActivity() {
                         SplashScreen(
                             onTimeout = {
                                 hasCompletedSplash = true
-                                viewModel.checkClipboardAndSave(context)
+                                viewModel.onAppForegrounded(context)
                                 navController.navigate("home") {
                                     popUpTo("splash") { inclusive = true }
                                     launchSingleTop = true
@@ -146,7 +146,7 @@ class MainActivity : ComponentActivity() {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
             window.decorView.post {
-                clipboardViewModel?.checkClipboardAndSave(applicationContext)
+                clipboardViewModel?.onAppForegrounded(applicationContext)
             }
         }
     }
