@@ -69,8 +69,9 @@ fun SplashScreen(
         val prevLightStatus = controller?.isAppearanceLightStatusBars ?: false
         val prevLightNav = controller?.isAppearanceLightNavigationBars ?: false
 
-        controller?.isAppearanceLightStatusBars = false
-        controller?.isAppearanceLightNavigationBars = false
+        // On white background, status bar and nav bar icons must be dark (visible)
+        controller?.isAppearanceLightStatusBars = true
+        controller?.isAppearanceLightNavigationBars = true
 
         onDispose {
             controller?.isAppearanceLightStatusBars = prevLightStatus
@@ -168,16 +169,7 @@ fun SplashScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        BrandNavyCenter,
-                        BrandNavyMid,
-                        BrandNavyDeep
-                    ),
-                    radius = 1100f
-                )
-            )
+            .background(Color.White)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .testTag("splash_screen"),
         contentAlignment = Alignment.Center
@@ -201,26 +193,20 @@ fun SplashScreen(
             ) {
                 Surface(
                     shape = RoundedCornerShape(32.dp),
-                    color = BrandNavyCardBg,
-                    shadowElevation = 12.dp,
+                    color = Color.White,
+                    shadowElevation = 8.dp,
                     modifier = Modifier
                         .size(142.dp)
                         .border(
                             width = 1.dp,
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    BrandNestGold.copy(alpha = 0.35f),
-                                    Color.White.copy(alpha = 0.12f),
-                                    Color.Transparent
-                                )
-                            ),
+                            color = Color(0xFFE2E8F0),
                             shape = RoundedCornerShape(32.dp)
                         )
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(BrandNavyCardBg),
+                            .background(Color.White),
                         contentAlignment = Alignment.Center
                     ) {
                         Image(
@@ -229,7 +215,7 @@ fun SplashScreen(
                             contentScale = ContentScale.Fit,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(10.dp)
+                                .padding(12.dp)
                                 .testTag("splash_logo_image")
                         )
 
@@ -253,7 +239,7 @@ fun SplashScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -268,7 +254,7 @@ fun SplashScreen(
                     text = buildAnnotatedString {
                         withStyle(
                             style = SpanStyle(
-                                color = BrandCopyWhiteBlue,
+                                color = Color(0xFF0F172A),
                                 fontWeight = FontWeight.ExtraBold
                             )
                         ) {
@@ -276,7 +262,7 @@ fun SplashScreen(
                         }
                         withStyle(
                             style = SpanStyle(
-                                color = BrandNestGold,
+                                color = Color(0xFFD97706),
                                 fontWeight = FontWeight.ExtraBold
                             )
                         ) {
@@ -308,9 +294,9 @@ fun SplashScreen(
                             .background(
                                 brush = Brush.horizontalGradient(
                                     colors = listOf(
-                                        BrandNestGoldLight,
-                                        BrandNestGold,
-                                        BrandNestGoldDeep
+                                        Color(0xFFFBBF24),
+                                        Color(0xFFD97706),
+                                        Color(0xFFB45309)
                                     )
                                 )
                             )

@@ -220,11 +220,11 @@ fun DetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 10.dp, vertical = 6.dp)
-                .verticalScroll(rememberScrollState()),
+                .imePadding()
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            // Ultra-Compact Metadata Summary Bar
+            // Ultra-Compact Metadata Summary Bar (Fixed header)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -277,303 +277,313 @@ fun DetailScreen(
                 }
             }
 
-            // Single Compact Row: Title Input Box (34.dp) + Category Selector Pill (34.dp)
+            // Single Compact Row: Title Input Box (34.dp) + Category Selector Pill (34.dp) (Fixed header)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Ultra-Compact Title Input Box (34.dp height, zero vertical clipping)
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                        border = BorderStroke(
-                            width = if (isTitleFocused) 1.2.dp else 1.dp,
-                            color = if (isTitleFocused) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.outlineVariant
-                            }
-                        ),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(34.dp)
-                    ) {
-                        BasicTextField(
-                            value = editedTitle,
-                            onValueChange = {
-                                editedTitle = it
-                                if (editedCategory.isBlank()) {
-                                    editedCategory = "General"
-                                }
-                            },
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            ),
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .onFocusChanged { isTitleFocused = it.isFocused }
-                                .testTag("edit_clip_title_input"),
-                            decorationBox = { innerTextField ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(horizontal = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Edit,
-                                        contentDescription = "Title Icon",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Box(
-                                        modifier = Modifier.weight(1f),
-                                        contentAlignment = Alignment.CenterStart
-                                    ) {
-                                        if (editedTitle.isEmpty()) {
-                                            Text(
-                                                text = "Add Title",
-                                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                                                color = MaterialTheme.colorScheme.outline,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                        innerTextField()
-                                    }
-                                    if (editedTitle.isNotEmpty()) {
-                                        IconButton(
-                                            onClick = { editedTitle = "" },
-                                            modifier = Modifier.size(18.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Clear,
-                                                contentDescription = "Clear title",
-                                                tint = MaterialTheme.colorScheme.outline,
-                                                modifier = Modifier.size(12.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        )
-                    }
-
-                    // Ultra-Compact Category Selector Button (34.dp height)
-                    Surface(
-                        onClick = { showCategoryBar = !showCategoryBar },
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (showCategoryBar) {
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                        },
-                        border = BorderStroke(
-                            width = 1.dp,
-                            color = if (showCategoryBar) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.outlineVariant
-                            }
-                        ),
-                        modifier = Modifier
-                            .height(34.dp)
-                            .testTag("edit_category_dropdown_button")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Category,
-                                contentDescription = "Category",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = editedCategory,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                ),
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1
-                            )
-                            Icon(
-                                imageVector = if (showCategoryBar) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Toggle Categories",
-                                tint = MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(14.dp)
-                            )
-                        }
-                    }
-                }
-
-                // Full-Width Single-Line Category Pills Row (Fits all categories on screen without scrolling)
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    categories.forEach { cat ->
-                        val isSelected = editedCategory == cat
-                        val chipWeight = when (cat) {
-                            "Important" -> 1.25f
-                            else -> 0.95f
-                        }
-                        Surface(
-                            onClick = {
-                                editedCategory = cat
-                                showCategoryBar = false
-                            },
-                            shape = RoundedCornerShape(7.dp),
-                            color = if (isSelected) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                            },
-                            border = BorderStroke(
-                                width = 0.8.dp,
-                                color = if (isSelected) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.outlineVariant
-                                }
-                            ),
-                            modifier = Modifier
-                                .weight(chipWeight)
-                                .height(26.dp)
-                                .testTag("edit_category_chip_${cat.lowercase()}")
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                if (isSelected) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(9.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                }
-                                Text(
-                                    text = cat,
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontSize = 9.5.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    ),
-                                    color = if (isSelected) {
-                                        MaterialTheme.colorScheme.onPrimary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    },
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Content Header + Quick Paste Bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Notes,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Text(
-                            text = "Content",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Surface(
-                        onClick = {
-                            try {
-                                val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                val clipData = clipboardManager?.primaryClip
-                                if (clipData != null && clipData.itemCount > 0) {
-                                    val item = clipData.getItemAt(0)
-                                    val text = item.text?.toString() ?: item.coerceToText(context)?.toString()
-                                    if (!text.isNullOrBlank()) {
-                                        editedText = if (editedText.isBlank()) text else "$editedText\n$text"
-                                        Toast.makeText(context, "Pasted from clipboard", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                // Ignore
-                            }
-                        },
-                        shape = RoundedCornerShape(5.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                        modifier = Modifier.height(22.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.ContentPaste,
-                                contentDescription = "Paste",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(11.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "Paste",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                ),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-
-                // Compact 5-Line Default Auto-Expanding Content Input Box
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Ultra-Compact Title Input Box (34.dp height, zero vertical clipping)
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                     border = BorderStroke(
-                        width = if (isContentFocused) 1.2.dp else 1.dp,
-                        color = if (isContentFocused) {
+                        width = if (isTitleFocused) 1.2.dp else 1.dp,
+                        color = if (isTitleFocused) {
                             MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.outlineVariant
                         }
                     ),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(34.dp)
+                ) {
+                    BasicTextField(
+                        value = editedTitle,
+                        onValueChange = {
+                            editedTitle = it
+                            if (editedCategory.isBlank()) {
+                                editedCategory = "General"
+                            }
+                        },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .onFocusChanged { isTitleFocused = it.isFocused }
+                            .testTag("edit_clip_title_input"),
+                        decorationBox = { innerTextField ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Edit,
+                                    contentDescription = "Title Icon",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier.weight(1f),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (editedTitle.isEmpty()) {
+                                        Text(
+                                            text = "Add Title",
+                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                            color = MaterialTheme.colorScheme.outline,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                                if (editedTitle.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { editedTitle = "" },
+                                        modifier = Modifier.size(18.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = "Clear title",
+                                            tint = MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    )
+                }
+
+                // Ultra-Compact Category Selector Button (34.dp height)
+                Surface(
+                    onClick = { showCategoryBar = !showCategoryBar },
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (showCategoryBar) {
+                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                    },
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = if (showCategoryBar) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant
+                        }
+                    ),
+                    modifier = Modifier
+                        .height(34.dp)
+                        .testTag("edit_category_dropdown_button")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Category,
+                            contentDescription = "Category",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = editedCategory,
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1
+                        )
+                        Icon(
+                            imageVector = if (showCategoryBar) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Toggle Categories",
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+
+            // Full-Width Single-Line Category Pills Row (Fixed header)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                categories.forEach { cat ->
+                    val isSelected = editedCategory == cat
+                    val chipWeight = when (cat) {
+                        "Important" -> 1.25f
+                        else -> 0.95f
+                    }
+                    Surface(
+                        onClick = {
+                            editedCategory = cat
+                            showCategoryBar = false
+                        },
+                        shape = RoundedCornerShape(7.dp),
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        },
+                        border = BorderStroke(
+                            width = 0.8.dp,
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant
+                            }
+                        ),
+                        modifier = Modifier
+                            .weight(chipWeight)
+                            .height(26.dp)
+                            .testTag("edit_category_chip_${cat.lowercase()}")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(9.dp)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                            }
+                            Text(
+                                text = cat,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.5.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                ),
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Content Header + Quick Paste Bar (Fixed header)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Notes,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Text(
+                        text = "Content",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Surface(
+                    onClick = {
+                        try {
+                            val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            val clipData = clipboardManager?.primaryClip
+                            if (clipData != null && clipData.itemCount > 0) {
+                                val item = clipData.getItemAt(0)
+                                val text = item.text?.toString() ?: item.coerceToText(context)?.toString()
+                                if (!text.isNullOrBlank()) {
+                                    editedText = if (editedText.isBlank()) text else "$editedText\n$text"
+                                    Toast.makeText(context, "Pasted from clipboard", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        } catch (e: Exception) {
+                            // Ignore
+                        }
+                    },
+                    shape = RoundedCornerShape(5.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
+                    modifier = Modifier.height(22.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ContentPaste,
+                            contentDescription = "Paste",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(11.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "Paste",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            // Compact Auto-Sizing Content Box (Compact by default, expands up to max height and scrolls internally if lengthy)
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                border = BorderStroke(
+                    width = if (isContentFocused) 1.2.dp else 1.dp,
+                    color = if (isContentFocused) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant
+                    }
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 96.dp, max = 280.dp)
+            ) {
+                val contentScrollState = rememberScrollState()
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 96.dp, max = 280.dp)
+                        .verticalScroll(contentScrollState)
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
                 ) {
                     BasicTextField(
                         value = editedText,
                         onValueChange = { editedText = it },
-                        minLines = 5,
+                        minLines = 4,
                         textStyle = MaterialTheme.typography.bodySmall.copy(
                             fontSize = 12.sp,
                             lineHeight = 17.sp,
@@ -583,8 +593,6 @@ fun DetailScreen(
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 96.dp)
-                            .padding(horizontal = 10.dp, vertical = 8.dp)
                             .onFocusChanged { isContentFocused = it.isFocused }
                             .testTag("edit_clip_text_input"),
                         decorationBox = { innerTextField ->
@@ -594,7 +602,7 @@ fun DetailScreen(
                             ) {
                                 if (editedText.isEmpty()) {
                                     Text(
-                                        text = "Paste or type your content here (5 lines default, expands automatically)...",
+                                        text = "Paste or type your content here...",
                                         style = MaterialTheme.typography.bodySmall.copy(
                                             fontSize = 11.5.sp,
                                             lineHeight = 16.sp
@@ -607,49 +615,50 @@ fun DetailScreen(
                         }
                     )
                 }
+            }
 
-                // Ultra-Compact Action Buttons Row
-                Row(
+            // Fixed Action Buttons Row at bottom
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = onBack,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 2.dp),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
+                        .height(30.dp)
+                        .testTag("cancel_edit_button"),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
                 ) {
-                    TextButton(
-                        onClick = onBack,
-                        modifier = Modifier
-                            .height(30.dp)
-                            .testTag("cancel_edit_button"),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
-                    ) {
-                        Text("Cancel", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
-                    }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Button(
-                        onClick = {
-                            viewModel.updateClip(clip, editedTitle, editedText, editedCategory)
-                            Toast.makeText(context, "Note updated successfully", Toast.LENGTH_SHORT).show()
-                            onBack()
-                        },
-                        enabled = editedText.isNotBlank(),
-                        modifier = Modifier
-                            .height(30.dp)
-                            .testTag("save_edit_button"),
-                        shape = RoundedCornerShape(7.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-                    ) {
-                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(13.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Save Changes",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            )
-                        )
-                    }
+                    Text("Cancel", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
                 }
+                Spacer(modifier = Modifier.width(6.dp))
+                Button(
+                    onClick = {
+                        viewModel.updateClip(clip, editedTitle, editedText, editedCategory)
+                        Toast.makeText(context, "Note updated successfully", Toast.LENGTH_SHORT).show()
+                        onBack()
+                    },
+                    enabled = editedText.isNotBlank(),
+                    modifier = Modifier
+                        .height(30.dp)
+                        .testTag("save_edit_button"),
+                    shape = RoundedCornerShape(7.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(13.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Save Changes",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
+                    )
+                }
+            }
         }
     }
 

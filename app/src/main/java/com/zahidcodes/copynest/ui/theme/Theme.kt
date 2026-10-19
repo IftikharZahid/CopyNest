@@ -57,6 +57,7 @@ fun CopyNestTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     themeMode: String = "SYSTEM", // SYSTEM, LIGHT, DARK
     dynamicColor: Boolean = false,
+    isSplashScreen: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val isDark = when (themeMode.uppercase()) {
@@ -80,8 +81,14 @@ fun CopyNestTheme(
             val window = (view.context as? Activity)?.window
             if (window != null) {
                 val insetsController = WindowCompat.getInsetsController(window, view)
-                insetsController.isAppearanceLightStatusBars = !isDark
-                insetsController.isAppearanceLightNavigationBars = !isDark
+                if (isSplashScreen) {
+                    // Splash screen uses pure white background, status bar & nav bar icons must be dark
+                    insetsController.isAppearanceLightStatusBars = true
+                    insetsController.isAppearanceLightNavigationBars = true
+                } else {
+                    insetsController.isAppearanceLightStatusBars = !isDark
+                    insetsController.isAppearanceLightNavigationBars = !isDark
+                }
             }
         }
     }

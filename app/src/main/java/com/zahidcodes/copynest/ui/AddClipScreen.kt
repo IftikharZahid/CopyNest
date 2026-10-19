@@ -141,8 +141,8 @@ fun AddClipScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 10.dp, vertical = 8.dp)
-                .verticalScroll(rememberScrollState()),
+                .imePadding()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
             // Single Compact Row: Add Title Input (34.dp) + Category Selector Pill (34.dp)
@@ -463,7 +463,7 @@ fun AddClipScreen(
                 }
             }
 
-            // Compact 5-Line Default Auto-Expanding Content Input Box
+            // Compact Auto-Sizing Content Box (Compact by default, expands up to max height and scrolls internally if lengthy)
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
@@ -475,43 +475,52 @@ fun AddClipScreen(
                         MaterialTheme.colorScheme.outlineVariant
                     }
                 ),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 96.dp, max = 280.dp)
             ) {
-                BasicTextField(
-                    value = textContent,
-                    onValueChange = { textContent = it },
-                    minLines = 5,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 12.sp,
-                        lineHeight = 17.sp,
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                val contentScrollState = rememberScrollState()
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 96.dp)
+                        .heightIn(min = 96.dp, max = 280.dp)
+                        .verticalScroll(contentScrollState)
                         .padding(horizontal = 10.dp, vertical = 8.dp)
-                        .onFocusChanged { isContentFocused = it.isFocused }
-                        .testTag("add_clip_content_input"),
-                    decorationBox = { innerTextField ->
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.TopStart
-                        ) {
-                            if (textContent.isEmpty()) {
-                                Text(
-                                    text = "Paste or type your note content here (5 lines default, expands automatically)...",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = 11.5.sp,
-                                        lineHeight = 16.sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.outline
-                                )
+                ) {
+                    BasicTextField(
+                        value = textContent,
+                        onValueChange = { textContent = it },
+                        minLines = 4,
+                        textStyle = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { isContentFocused = it.isFocused }
+                            .testTag("add_clip_content_input"),
+                        decorationBox = { innerTextField ->
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.TopStart
+                            ) {
+                                if (textContent.isEmpty()) {
+                                    Text(
+                                        text = "Paste or type your note content here...",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 11.5.sp,
+                                            lineHeight = 16.sp
+                                        ),
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+                                innerTextField()
                             }
-                            innerTextField()
                         }
-                    }
-                )
+                    )
+                }
             }
         }
     }

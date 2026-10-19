@@ -1,8 +1,10 @@
 package com.zahidcodes.copynest
 
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -39,7 +41,10 @@ class MainActivity : ComponentActivity() {
             }
         }
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+        )
         setContent {
             val context = LocalContext.current
             val viewModel = remember {
@@ -70,7 +75,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            CopyNestTheme(themeMode = themeMode) {
+            CopyNestTheme(themeMode = themeMode, isSplashScreen = !hasCompletedSplash) {
                 val navController = rememberNavController()
                 val startRoute = remember { if (hasCompletedSplash) "home" else "splash" }
 

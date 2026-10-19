@@ -249,21 +249,15 @@ fun HomeScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
                                 shape = RoundedCornerShape(9.dp),
-                                color = Color(0xFF051E58),
-                                shadowElevation = 2.dp,
+                                color = Color.White,
+                                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                                shadowElevation = 1.5.dp,
                                 modifier = Modifier.size(36.dp)
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .background(
-                                            brush = Brush.radialGradient(
-                                                colors = listOf(
-                                                    Color(0xFF0D3FA8),
-                                                    Color(0xFF031236)
-                                                )
-                                            )
-                                        ),
+                                        .background(Color.White),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Image(
@@ -272,7 +266,7 @@ fun HomeScreen(
                                         contentScale = ContentScale.Fit,
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .padding(2.dp)
+                                            .padding(3.dp)
                                             .testTag("home_app_logo")
                                     )
                                 }
