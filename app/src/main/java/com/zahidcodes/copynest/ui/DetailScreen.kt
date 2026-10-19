@@ -556,7 +556,7 @@ fun DetailScreen(
                 }
             }
 
-            // Compact Auto-Sizing Content Box (Compact by default, expands up to max height and scrolls internally if lengthy)
+            // 10-Row Maximum Auto-Expanding Content Box (Expands up to 10 rows, then scrolls internally)
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
@@ -570,51 +570,44 @@ fun DetailScreen(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 96.dp, max = 280.dp)
+                    .wrapContentHeight()
             ) {
-                val contentScrollState = rememberScrollState()
-                Box(
+                BasicTextField(
+                    value = editedText,
+                    onValueChange = { editedText = it },
+                    minLines = 4,
+                    maxLines = 10,
+                    textStyle = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 12.sp,
+                        lineHeight = 18.sp,
+                        fontFamily = if (clip.contentType == "CODE") FontFamily.Monospace else FontFamily.Default,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 96.dp, max = 280.dp)
-                        .verticalScroll(contentScrollState)
                         .padding(horizontal = 10.dp, vertical = 8.dp)
-                ) {
-                    BasicTextField(
-                        value = editedText,
-                        onValueChange = { editedText = it },
-                        minLines = 4,
-                        textStyle = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp,
-                            fontFamily = if (clip.contentType == "CODE") FontFamily.Monospace else FontFamily.Default,
-                            color = MaterialTheme.colorScheme.onSurface
-                        ),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onFocusChanged { isContentFocused = it.isFocused }
-                            .testTag("edit_clip_text_input"),
-                        decorationBox = { innerTextField ->
-                            Box(
-                                modifier = Modifier.fillMaxWidth(),
-                                contentAlignment = Alignment.TopStart
-                            ) {
-                                if (editedText.isEmpty()) {
-                                    Text(
-                                        text = "Paste or type your content here...",
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 11.5.sp,
-                                            lineHeight = 16.sp
-                                        ),
-                                        color = MaterialTheme.colorScheme.outline
-                                    )
-                                }
-                                innerTextField()
+                        .onFocusChanged { isContentFocused = it.isFocused }
+                        .testTag("edit_clip_text_input"),
+                    decorationBox = { innerTextField ->
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.TopStart
+                        ) {
+                            if (editedText.isEmpty()) {
+                                Text(
+                                    text = "Paste or type your content here...",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 11.5.sp,
+                                        lineHeight = 18.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.outline
+                                )
                             }
+                            innerTextField()
                         }
-                    )
-                }
+                    }
+                )
             }
 
             // Fixed Action Buttons Row at bottom
