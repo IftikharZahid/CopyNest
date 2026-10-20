@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import com.zahidcodes.copynest.data.ClipDatabase
 import com.zahidcodes.copynest.data.LinkMetadataEntity
@@ -329,6 +330,130 @@ class ExampleRobolectricTest {
         }
         composeTestRule.waitForIdle()
         assertTrue("Splash screen must redirect to HomeScreen once AllowedToProceed is reached", navigatedToMain)
+    }
+
+    @Test
+    fun `home screen renders CopyNest brand header, Your clips heading, filter pills, seeded clip cards, and no bottom navigation`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = ClipDatabase.getDatabase(context)
+        val prefs = com.zahidcodes.copynest.data.UserPreferences(context)
+        runBlocking {
+            db.clipDao().deleteAllClips()
+            db.clipDao().deleteAllDeletedClips()
+            prefs.setHasSeededDefaultClips(false)
+        }
+
+        val viewModel = ClipboardViewModel(context, seedDefaultClipsIfFirstLaunch = true)
+        for (i in 0 until 6) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(60)
+        }
+
+        composeTestRule.setContent {
+            CopyNestTheme(themeMode = "LIGHT") {
+                com.zahidcodes.copynest.ui.HomeScreen(
+                    viewModel = viewModel,
+                    onNavigateToDetail = {},
+                    onNavigateToAdd = {},
+                    onNavigateToSettings = {}
+                )
+            }
+        }
+
+        for (i in 0 until 6) {
+            shadowOf(Looper.getMainLooper()).idle()
+            composeTestRule.mainClock.advanceTimeBy(100L)
+            Thread.sleep(60)
+        }
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("home_app_logo").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("settings_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("your_clips_heading").assertTextEquals("Your clips")
+        composeTestRule.onNodeWithTag("search_input").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("filter_chip_all").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("filter_chip_pinned").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("filter_chip_url").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("filter_chip_recent").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("add_clip_fab").assertIsDisplayed()
+
+        val seededClips = runBlocking { db.clipDao().getAllClipsList() }
+        assertTrue("Expected default clips to be seeded on first launch", seededClips.size >= 4)
+        assertTrue(seededClips.any { it.title == "Study Notes" && it.isPinned })
+        assertTrue(seededClips.any { it.title == "Website Link" })
+        assertTrue(seededClips.any { it.title == "Meeting Points" })
+        assertTrue(seededClips.any { it.title == "Code Snippet" })
+    }
+
+    @Test
+    fun `add note screen and update note screen render in compact HomeScreen format`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = ClipDatabase.getDatabase(context)
+        runBlocking {
+            db.clipDao().deleteAllClips()
+            db.clipDao().deleteAllDeletedClips()
+        }
+
+        val viewModel = ClipboardViewModel(context)
+        viewModel.saveManualClip(
+            title = "Study Notes",
+            text = "• Review chapter 3\n• Practice problems",
+            category = "Study"
+        )
+        for (i in 0 until 6) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        val savedClip = runBlocking { db.clipDao().getAllClipsList().first() }
+
+        val showDetail = androidx.compose.runtime.mutableStateOf(false)
+        composeTestRule.setContent {
+            CopyNestTheme(themeMode = "LIGHT") {
+                if (!showDetail.value) {
+                    com.zahidcodes.copynest.ui.AddClipScreen(
+                        viewModel = viewModel,
+                        onBack = {}
+                    )
+                } else {
+                    com.zahidcodes.copynest.ui.DetailScreen(
+                        clipId = savedClip.id,
+                        viewModel = viewModel,
+                        onBack = {}
+                    )
+                }
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("add_title_input").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("category_dropdown_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("add_clip_content_input").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("cancel_add_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("save_new_clip_button").assertIsDisplayed()
+
+        // Category items are only inside the dropdown list until opened
+        composeTestRule.onNodeWithTag("category_chip_study").assertDoesNotExist()
+        composeTestRule.onNodeWithTag("category_dropdown_button").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("category_chip_study").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("category_chip_study").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.runOnIdle {
+            showDetail.value = true
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("edit_clip_title_input").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("edit_category_dropdown_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("edit_clip_text_input").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("cancel_edit_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("save_edit_button").assertIsDisplayed()
+
+        // Category items on Edit Note screen are only inside the dropdown list until opened
+        composeTestRule.onNodeWithTag("edit_category_chip_study").assertDoesNotExist()
+        composeTestRule.onNodeWithTag("edit_category_dropdown_button").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("edit_category_chip_study").assertIsDisplayed()
     }
 }
 

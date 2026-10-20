@@ -18,6 +18,7 @@ class UserPreferences(private val context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode") // SYSTEM, LIGHT, DARK
         val PENDING_MANDATORY_UPDATE_VERSION = intPreferencesKey("pending_mandatory_update_version")
         val MIN_SUPPORTED_VERSION_CODE = intPreferencesKey("min_supported_version_code")
+        val HAS_SEEDED_DEFAULT_CLIPS = booleanPreferencesKey("has_seeded_default_clips")
     }
 
     val autoCaptureFlow: Flow<Boolean> = context.dataStore.data
@@ -39,6 +40,20 @@ class UserPreferences(private val context: Context) {
         .map { preferences ->
             preferences[MIN_SUPPORTED_VERSION_CODE] ?: 0
         }
+
+    suspend fun hasSeededDefaultClips(): Boolean {
+        return try {
+            context.dataStore.data.map { it[HAS_SEEDED_DEFAULT_CLIPS] ?: false }.first()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    suspend fun setHasSeededDefaultClips(seeded: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[HAS_SEEDED_DEFAULT_CLIPS] = seeded
+        }
+    }
 
     suspend fun setAutoCapture(enabled: Boolean) {
         context.dataStore.edit { preferences ->

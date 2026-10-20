@@ -22,7 +22,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class ClipboardViewModel(context: Context) : ViewModel() {
+class ClipboardViewModel(
+    context: Context,
+    private val seedDefaultClipsIfFirstLaunch: Boolean = false
+) : ViewModel() {
     private val appContext = context.applicationContext
     private val database = ClipDatabase.getDatabase(appContext)
     private val repository = ClipRepository(database.clipDao())
@@ -80,8 +83,58 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                         repository.pruneOldDeletedClips(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000L)
                     } catch (_: Exception) {}
 
+                    // Seed initial sample clips on very first app launch if database is empty
+                    var all = repository.getAllClipsList()
+                    if (seedDefaultClipsIfFirstLaunch && all.isEmpty() && !userPreferences.hasSeededDefaultClips()) {
+                        val now = System.currentTimeMillis()
+                        val defaultClips = listOf(
+                            ClipEntity(
+                                title = "Study Notes",
+                                text = "Important concepts to review\nbefore the exam.",
+                                timestamp = now - 5L * 60_000L,
+                                isPinned = true,
+                                contentType = "TEXT",
+                                category = "Study"
+                            ),
+                            ClipEntity(
+                                title = "Website Link",
+                                text = "https://example.com",
+                                timestamp = now - 25L * 60_000L,
+                                isPinned = false,
+                                contentType = "URL",
+                                category = "Links",
+                                linkUrl = "https://example.com",
+                                linkDomain = "example.com",
+                                linkSiteName = "Example",
+                                linkTitle = "Website Link",
+                                linkDescription = "Example Domain for illustrative documentation",
+                                linkMetadataLoaded = true
+                            ),
+                            ClipEntity(
+                                title = "Meeting Points",
+                                text = "• Project discussion\n• UI/UX design\n• Performance improvement",
+                                timestamp = now - 60L * 60_000L,
+                                isPinned = false,
+                                contentType = "TEXT",
+                                category = "Work"
+                            ),
+                            ClipEntity(
+                                title = "Code Snippet",
+                                text = "const copyText = async () => {\n  await Clipboard.setString(text);\n};",
+                                timestamp = now - 2L * 60L * 60_000L,
+                                isPinned = false,
+                                contentType = "CODE",
+                                category = "Code"
+                            )
+                        )
+                        repository.insertClips(defaultClips)
+                        userPreferences.setHasSeededDefaultClips(true)
+                        all = repository.getAllClipsList()
+                    } else if (all.isNotEmpty() && !userPreferences.hasSeededDefaultClips()) {
+                        userPreferences.setHasSeededDefaultClips(true)
+                    }
+
                     // Clean up duplicate records and auto-assign category (Text, Links, Code) for existing records
-                    val all = repository.getAllClipsList()
                     val seenTexts = HashSet<String>()
                     val activeClips = mutableListOf<ClipEntity>()
                     for (item in all) {
@@ -192,7 +245,7 @@ class ClipboardViewModel(context: Context) : ViewModel() {
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _selectedFilter = MutableStateFlow("ALL") // ALL, PINNED, URL, CODE, TEXT
+    private val _selectedFilter = MutableStateFlow("ALL") // ALL, PINNED, URL, RECENT, CODE, TEXT
     val selectedFilter: StateFlow<String> = _selectedFilter.asStateFlow()
 
     val clips: StateFlow<List<ClipEntity>> = combine(
@@ -222,6 +275,7 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                     it.linkUrl.isNotBlank() ||
                     LinkMetadataManager.extractFirstLink(it.text) != null
             }
+            "RECENT" -> result = result.sortedByDescending { it.timestamp }
             "CODE" -> result = result.filter {
                 it.contentType == "CODE" || it.category.equals("Code", ignoreCase = true)
             }

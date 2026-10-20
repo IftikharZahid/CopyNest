@@ -5,13 +5,12 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -19,7 +18,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -40,7 +41,30 @@ fun DetailScreen(
     val context = LocalContext.current
     val clips by viewModel.clips.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val themeMode by viewModel.themeMode.collectAsState()
     val clip = clips.find { it.id == clipId }
+
+    val isDark = when (themeMode.uppercase()) {
+        "LIGHT" -> false
+        "DARK" -> true
+        else -> isSystemInDarkTheme()
+    }
+
+    // HomeScreen signature color palette
+    val screenBgColor = if (isDark) Color(0xFF090D16) else Color(0xFFF6F8FC)
+    val navyTextColor = if (isDark) Color(0xFFF8FAFC) else Color(0xFF0A1D4B)
+    val pillUnselectedBg = if (isDark) Color(0xFF1E293B) else Color(0xFFEBF0F6)
+    val pillUnselectedText = if (isDark) Color(0xFFCBD5E1) else Color(0xFF334155)
+    val pillSelectedBg = if (isDark) Color(0xFF2563EB) else Color(0xFF0048B5)
+    val cardBgColor = if (isDark) Color(0xFF131B2E) else Color.White
+    val cardBorderColor = if (isDark) Color(0xFF26334D) else Color(0xFFEDF2F7)
+    val bodyTextColor = if (isDark) Color(0xFFCBD5E1) else Color(0xFF475569)
+    val timestampColor = if (isDark) Color(0xFF94A3B8) else Color(0xFF64748B)
+
+    // Light Red Cancel Button palette
+    val cancelBtnBg = if (isDark) Color(0xFF3F1D24) else Color(0xFFFEE2E2)
+    val cancelBtnBorder = if (isDark) Color(0xFF7F1D1D) else Color(0xFFFECACA)
+    val cancelBtnText = if (isDark) Color(0xFFF87171) else Color(0xFFDC2626)
 
     var editedTitle by remember { mutableStateOf(clip?.title ?: "") }
     var editedText by remember { mutableStateOf(clip?.text ?: "") }
@@ -51,7 +75,7 @@ fun DetailScreen(
                 ?: "Text"
         )
     }
-    var showCategoryBar by remember { mutableStateOf(false) }
+    var categoryMenuExpanded by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var isTitleFocused by remember { mutableStateOf(false) }
     var isContentFocused by remember { mutableStateOf(false) }
@@ -69,42 +93,58 @@ fun DetailScreen(
 
     if (clip == null) {
         Scaffold(
-            topBar = {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 1.dp,
-                    shadowElevation = 1.dp
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .statusBarsPadding()
-                            .height(44.dp)
-                            .padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Default.ArrowBack, contentDescription = "Back", modifier = Modifier.size(18.dp))
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Clip Details", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
-                    }
-                }
-            }
+            containerColor = screenBgColor,
+            contentWindowInsets = WindowInsets.safeDrawing
         ) { padding ->
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center
+                    .background(screenBgColor)
+                    .padding(padding)
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
             ) {
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(32.dp),
-                        strokeWidth = 2.5.dp
-                    )
-                } else {
-                    Text("Clip not found or deleted.", style = MaterialTheme.typography.bodySmall)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        onClick = onBack,
+                        shape = CircleShape,
+                        color = pillUnselectedBg,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .testTag("back_button")
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Back",
+                                tint = navyTextColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    CopyNestHeaderBrand(navyColor = navyTextColor, compact = true)
+                }
+
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(32.dp),
+                            color = pillSelectedBg,
+                            strokeWidth = 2.5.dp
+                        )
+                    } else {
+                        Text(
+                            text = "Clip not found or deleted.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = bodyTextColor
+                        )
+                    }
                 }
             }
         }
@@ -113,206 +153,216 @@ fun DetailScreen(
 
     val dateFormat = remember { SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()) }
     val formattedDate = remember(clip.timestamp) { dateFormat.format(Date(clip.timestamp)) }
+    val relativeTimeText = remember(clip.timestamp) { formatRelativeTimestamp(clip.timestamp) }
     val wordCount = remember(editedText) {
         if (editedText.isBlank()) 0 else editedText.trim().split("\\s+".toRegex()).size
     }
     val charCount = editedText.length
 
-    Scaffold(
-        topBar = {
-            // Fixed Ultra-Compact Top Header (44.dp height, never scrolls)
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp,
-                shadowElevation = 1.dp
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .height(44.dp)
-                        .padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        IconButton(
-                            onClick = onBack,
-                            modifier = Modifier
-                                .size(32.dp)
-                                .testTag("back_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.ArrowBack,
-                                contentDescription = "Back",
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Update Note",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.5.sp
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        IconButton(
-                            onClick = { viewModel.togglePin(clip) },
-                            modifier = Modifier
-                                .size(30.dp)
-                                .testTag("detail_pin_button")
-                        ) {
-                            Icon(
-                                imageVector = if (clip.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                                contentDescription = "Pin",
-                                modifier = Modifier.size(16.dp),
-                                tint = if (clip.isPinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                viewModel.markInternalCopy(clip.text)
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                val clipData = ClipData.newPlainText("CopyNest", clip.text)
-                                clipboard.setPrimaryClip(clipData)
-                                Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier
-                                .size(30.dp)
-                                .testTag("detail_copy_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.ContentCopy,
-                                contentDescription = "Copy",
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        IconButton(
-                            onClick = { showDeleteConfirm = true },
-                            modifier = Modifier
-                                .size(30.dp)
-                                .testTag("detail_delete_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.DeleteOutline,
-                                contentDescription = "Delete",
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                }
-            }
+    val saveChangesAction = {
+        if (editedText.isNotBlank()) {
+            viewModel.updateClip(clip, editedTitle, editedText, editedCategory)
+            Toast.makeText(context, "Note updated successfully", Toast.LENGTH_SHORT).show()
+            onBack()
         }
+    }
+
+    val currentCategorySpec = remember(editedCategory, isDark) {
+        getCategoryVisualSpec(editedCategory, isDark)
+    }
+    val isCodeCategory = editedCategory.equals("Code", ignoreCase = true) ||
+        clip.contentType.equals("CODE", ignoreCase = true)
+    val isLinkCategory = editedCategory.equals("Links", ignoreCase = true) ||
+        clip.contentType.equals("URL", ignoreCase = true)
+
+    Scaffold(
+        containerColor = screenBgColor,
+        contentWindowInsets = WindowInsets.safeDrawing
     ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .background(screenBgColor)
                 .padding(paddingValues)
                 .imePadding()
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp)
+                .padding(horizontal = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Ultra-Compact Metadata Summary Bar (Fixed header)
+            Spacer(modifier = Modifier.height(2.dp))
+
+            // Top Brand Header Row matching HomeScreen
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(5.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
-                    ) {
-                        Text(
-                            text = editedCategory,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 9.5.sp
-                            ),
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                    Surface(
-                        shape = RoundedCornerShape(5.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Text(
-                            text = clip.contentType,
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    Surface(
+                        onClick = onBack,
+                        shape = CircleShape,
+                        color = pillUnselectedBg,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .testTag("back_button")
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Back",
+                                tint = navyTextColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    CopyNestHeaderBrand(
+                        navyColor = navyTextColor,
+                        compact = true
+                    )
+                }
+
+                // Right Top Actions: Pin, Copy, Delete
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Surface(
+                        onClick = { viewModel.togglePin(clip) },
+                        shape = CircleShape,
+                        color = if (clip.isPinned) {
+                            if (isDark) Color(0xFF3B2F14) else Color(0xFFFEF5DC)
+                        } else {
+                            pillUnselectedBg
+                        },
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("detail_pin_button")
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = if (clip.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                                contentDescription = "Pin",
+                                tint = if (clip.isPinned) Color(0xFFF59E0B) else navyTextColor,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .rotate(if (clip.isPinned) 35f else 0f)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = {
+                            viewModel.markInternalCopy(editedText.ifBlank { clip.text })
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clipData = ClipData.newPlainText("CopyNest", editedText.ifBlank { clip.text })
+                            clipboard.setPrimaryClip(clipData)
+                            Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = CircleShape,
+                        color = pillUnselectedBg,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("detail_copy_button")
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.Outlined.ContentCopy,
+                                contentDescription = "Copy",
+                                tint = navyTextColor,
+                                modifier = Modifier.size(15.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = { showDeleteConfirm = true },
+                        shape = CircleShape,
+                        color = cancelBtnBg,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("detail_delete_button")
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.Outlined.DeleteOutline,
+                                contentDescription = "Delete",
+                                tint = cancelBtnText,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Section Heading Row ("Update note" + live word/char counter pill)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Update note",
+                    style = MaterialTheme.typography.headlineSmall.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 20.sp,
+                        lineHeight = 23.sp,
+                        letterSpacing = (-0.4).sp
+                    ),
+                    color = navyTextColor
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = pillUnselectedBg
+                ) {
                     Text(
                         text = "$wordCount words • $charCount chars",
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                        color = MaterialTheme.colorScheme.outline
-                    )
-                    Text(
-                        text = formattedDate,
-                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
-                        color = MaterialTheme.colorScheme.outline
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        ),
+                        color = pillUnselectedText,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
             }
 
-            // Single Compact Row: Title Input Box (34.dp) + Category Selector Pill (34.dp) (Fixed header)
+            // Compact Pill Title Input + Category Dropdown List Trigger (with Category Logo)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Ultra-Compact Title Input Box (34.dp height, zero vertical clipping)
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                    border = BorderStroke(
-                        width = if (isTitleFocused) 1.2.dp else 1.dp,
-                        color = if (isTitleFocused) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.outlineVariant
-                        }
-                    ),
+                    shape = RoundedCornerShape(20.dp),
+                    color = pillUnselectedBg,
+                    border = if (isTitleFocused) {
+                        BorderStroke(1.2.dp, pillSelectedBg)
+                    } else {
+                        null
+                    },
                     modifier = Modifier
                         .weight(1f)
-                        .height(34.dp)
+                        .height(38.dp)
                 ) {
                     BasicTextField(
                         value = editedTitle,
                         onValueChange = {
                             editedTitle = it
                             if (editedCategory.isBlank()) {
-                                editedCategory = "General"
+                                editedCategory = "Text"
                             }
                         },
                         singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = navyTextColor
                         ),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        cursorBrush = SolidColor(pillSelectedBg),
                         modifier = Modifier
                             .fillMaxSize()
                             .onFocusChanged { isTitleFocused = it.isFocused }
@@ -321,25 +371,28 @@ fun DetailScreen(
                             Row(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(horizontal = 8.dp),
+                                    .padding(horizontal = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
                                     imageVector = Icons.Outlined.Edit,
                                     contentDescription = "Title Icon",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(14.dp)
+                                    tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF3E4E68),
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Box(
                                     modifier = Modifier.weight(1f),
                                     contentAlignment = Alignment.CenterStart
                                 ) {
                                     if (editedTitle.isEmpty()) {
                                         Text(
-                                            text = "Add Title",
-                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                                            color = MaterialTheme.colorScheme.outline,
+                                            text = "Add note title",
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Normal
+                                            ),
+                                            color = if (isDark) Color(0xFF94A3B8) else Color(0xFF5A6B82),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -349,13 +402,13 @@ fun DetailScreen(
                                 if (editedTitle.isNotEmpty()) {
                                     IconButton(
                                         onClick = { editedTitle = "" },
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(22.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Clear,
                                             contentDescription = "Clear title",
-                                            tint = MaterialTheme.colorScheme.outline,
-                                            modifier = Modifier.size(12.dp)
+                                            tint = if (isDark) Color(0xFF94A3B8) else Color(0xFF5A6B82),
+                                            modifier = Modifier.size(14.dp)
                                         )
                                     }
                                 }
@@ -364,292 +417,446 @@ fun DetailScreen(
                     )
                 }
 
-                // Ultra-Compact Category Selector Button (34.dp height)
-                Surface(
-                    onClick = { showCategoryBar = !showCategoryBar },
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (showCategoryBar) {
-                        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
-                    } else {
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                    },
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = if (showCategoryBar) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.outlineVariant
-                        }
-                    ),
-                    modifier = Modifier
-                        .height(34.dp)
-                        .testTag("edit_category_dropdown_button")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Category,
-                            contentDescription = "Category",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Text(
-                            text = editedCategory,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1
-                        )
-                        Icon(
-                            imageVector = if (showCategoryBar) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Toggle Categories",
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
-                }
-            }
-
-            // Full-Width Single-Line Category Pills Row (Fixed header)
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                categories.forEach { cat ->
-                    val isSelected = editedCategory == cat
-                    val chipWeight = when (cat) {
-                        "Important" -> 1.25f
-                        else -> 0.95f
-                    }
+                // Category Dropdown Selector with Logo & Label (No separate category row above body)
+                Box {
                     Surface(
-                        onClick = {
-                            editedCategory = cat
-                            showCategoryBar = false
-                        },
-                        shape = RoundedCornerShape(7.dp),
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                        },
+                        onClick = { categoryMenuExpanded = !categoryMenuExpanded },
+                        shape = RoundedCornerShape(20.dp),
+                        color = cardBgColor,
                         border = BorderStroke(
-                            width = 0.8.dp,
-                            color = if (isSelected) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.outlineVariant
-                            }
+                            width = 1.dp,
+                            color = if (categoryMenuExpanded) pillSelectedBg else cardBorderColor
                         ),
+                        shadowElevation = if (isDark) 0.dp else 1.dp,
                         modifier = Modifier
-                            .weight(chipWeight)
-                            .height(26.dp)
-                            .testTag("edit_category_chip_${cat.lowercase()}")
+                            .height(38.dp)
+                            .testTag("edit_category_dropdown_button")
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 3.dp),
+                            modifier = Modifier.padding(horizontal = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            if (isSelected) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(9.dp)
-                                )
-                                Spacer(modifier = Modifier.width(2.dp))
+                            Surface(
+                                shape = RoundedCornerShape(7.dp),
+                                color = currentCategorySpec.boxBg,
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = currentCategorySpec.icon,
+                                        contentDescription = null,
+                                        tint = currentCategorySpec.iconTint,
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .rotate(currentCategorySpec.rotateDegrees)
+                                    )
+                                }
                             }
                             Text(
-                                text = cat,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 9.5.sp,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                text = editedCategory,
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold
                                 ),
-                                color = if (isSelected) {
-                                    MaterialTheme.colorScheme.onPrimary
+                                color = navyTextColor,
+                                maxLines = 1
+                            )
+                            Icon(
+                                imageVector = if (categoryMenuExpanded) {
+                                    Icons.Default.KeyboardArrowUp
                                 } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                    Icons.Default.KeyboardArrowDown
                                 },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                contentDescription = "Select Category",
+                                tint = pillUnselectedText,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = categoryMenuExpanded,
+                        onDismissRequest = { categoryMenuExpanded = false },
+                        modifier = Modifier
+                            .width(185.dp)
+                            .background(cardBgColor)
+                    ) {
+                        categories.forEach { cat ->
+                            val spec = getCategoryVisualSpec(cat, isDark)
+                            val isSelected = editedCategory.equals(cat, ignoreCase = true)
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = cat,
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                        ),
+                                        color = if (isSelected) pillSelectedBg else navyTextColor
+                                    )
+                                },
+                                leadingIcon = {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = spec.boxBg,
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                            Icon(
+                                                imageVector = spec.icon,
+                                                contentDescription = cat,
+                                                tint = spec.iconTint,
+                                                modifier = Modifier
+                                                    .size(16.dp)
+                                                    .rotate(spec.rotateDegrees)
+                                            )
+                                        }
+                                    }
+                                },
+                                trailingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Selected",
+                                            tint = pillSelectedBg,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                } else null,
+                                onClick = {
+                                    editedCategory = cat
+                                    categoryMenuExpanded = false
+                                },
+                                modifier = Modifier.testTag("edit_category_chip_${cat.lowercase()}")
                             )
                         }
                     }
                 }
             }
 
-            // Content Header + Quick Paste Bar (Fixed header)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.Notes,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Text(
-                        text = "Content",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Surface(
-                    onClick = {
-                        try {
-                            val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                            val clipData = clipboardManager?.primaryClip
-                            if (clipData != null && clipData.itemCount > 0) {
-                                val item = clipData.getItemAt(0)
-                                val text = item.text?.toString() ?: item.coerceToText(context)?.toString()
-                                if (!text.isNullOrBlank()) {
-                                    editedText = if (editedText.isBlank()) text else "$editedText\n$text"
-                                    Toast.makeText(context, "Pasted from clipboard", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        } catch (e: Exception) {
-                            // Ignore
-                        }
-                    },
-                    shape = RoundedCornerShape(5.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-                    modifier = Modifier.height(22.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.ContentPaste,
-                            contentDescription = "Paste",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(11.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = "Paste",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 9.5.sp,
-                                fontWeight = FontWeight.SemiBold
-                            ),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            }
-
-            // 10-Row Maximum Auto-Expanding Content Box (Expands up to 10 rows, then scrolls internally)
+            // Full-Width Note Editor Card styled in the HomeScreen ClipCard format
             Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                shape = RoundedCornerShape(14.dp),
+                color = cardBgColor,
+                shadowElevation = if (isDark) 0.dp else 1.8.dp,
                 border = BorderStroke(
-                    width = if (isContentFocused) 1.2.dp else 1.dp,
-                    color = if (isContentFocused) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.outlineVariant
-                    }
+                    width = if (isContentFocused) 1.4.dp else 1.dp,
+                    color = if (isContentFocused) pillSelectedBg else cardBorderColor
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .wrapContentHeight()
             ) {
-                BasicTextField(
-                    value = editedText,
-                    onValueChange = { editedText = it },
-                    minLines = 4,
-                    maxLines = 10,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp,
-                        fontFamily = if (clip.contentType == "CODE") FontFamily.Monospace else FontFamily.Default,
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
-                        .onFocusChanged { isContentFocused = it.isFocused }
-                        .testTag("edit_clip_text_input"),
-                    decorationBox = { innerTextField ->
-                        Box(
-                            modifier = Modifier.fillMaxWidth(),
-                            contentAlignment = Alignment.TopStart
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Card Header Row: Category Logo Box + Live Title + Pinned Indicator + Paste/Clear Actions
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
-                            if (editedText.isEmpty()) {
-                                Text(
-                                    text = "Paste or type your content here...",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        fontSize = 11.5.sp,
-                                        lineHeight = 18.sp
-                                    ),
-                                    color = MaterialTheme.colorScheme.outline
-                                )
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = currentCategorySpec.boxBg,
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                    Icon(
+                                        imageVector = currentCategorySpec.icon,
+                                        contentDescription = editedCategory,
+                                        tint = currentCategorySpec.iconTint,
+                                        modifier = Modifier
+                                            .size(19.dp)
+                                            .rotate(currentCategorySpec.rotateDegrees)
+                                    )
+                                }
                             }
-                            innerTextField()
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = editedTitle.ifBlank {
+                                            when {
+                                                isCodeCategory -> "Code Snippet"
+                                                isLinkCategory -> "Website Link"
+                                                else -> "Saved Clip"
+                                            }
+                                        },
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.5.sp,
+                                            lineHeight = 18.sp
+                                        ),
+                                        color = navyTextColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+
+                                    if (clip.isPinned) {
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Icon(
+                                            imageVector = Icons.Filled.PushPin,
+                                            contentDescription = "Pinned",
+                                            tint = Color(0xFFF59E0B),
+                                            modifier = Modifier
+                                                .size(15.dp)
+                                                .rotate(35f)
+                                        )
+                                    }
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Schedule,
+                                        contentDescription = null,
+                                        tint = timestampColor,
+                                        modifier = Modifier.size(11.dp)
+                                    )
+                                    Text(
+                                        text = "$relativeTimeText ($formattedDate)",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 11.sp
+                                        ),
+                                        color = timestampColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (editedText.isNotEmpty()) {
+                                Surface(
+                                    onClick = { editedText = "" },
+                                    shape = RoundedCornerShape(50),
+                                    color = cancelBtnBg,
+                                    modifier = Modifier.height(26.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Clear,
+                                            contentDescription = "Clear",
+                                            tint = cancelBtnText,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "Clear",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            ),
+                                            color = cancelBtnText
+                                        )
+                                    }
+                                }
+                            }
+
+                            Surface(
+                                onClick = {
+                                    try {
+                                        val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                        val clipData = clipboardManager?.primaryClip
+                                        if (clipData != null && clipData.itemCount > 0) {
+                                            val item = clipData.getItemAt(0)
+                                            val text = item.text?.toString() ?: item.coerceToText(context)?.toString()
+                                            if (!text.isNullOrBlank()) {
+                                                editedText = if (editedText.isBlank()) text else "$editedText\n$text"
+                                                Toast.makeText(context, "Pasted from clipboard", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    } catch (_: Exception) {
+                                        // Ignore
+                                    }
+                                },
+                                shape = RoundedCornerShape(50),
+                                color = pillUnselectedBg,
+                                modifier = Modifier.height(26.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.ContentPaste,
+                                        contentDescription = "Paste",
+                                        tint = pillSelectedBg,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Paste",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        color = pillSelectedBg
+                                    )
+                                }
+                            }
                         }
                     }
-                )
-            }
 
-            // Fixed Action Buttons Row at bottom
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 2.dp),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TextButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .height(30.dp)
-                        .testTag("cancel_edit_button"),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
-                ) {
-                    Text("Cancel", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
-                }
-                Spacer(modifier = Modifier.width(6.dp))
-                Button(
-                    onClick = {
-                        viewModel.updateClip(clip, editedTitle, editedText, editedCategory)
-                        Toast.makeText(context, "Note updated successfully", Toast.LENGTH_SHORT).show()
-                        onBack()
-                    },
-                    enabled = editedText.isNotBlank(),
-                    modifier = Modifier
-                        .height(30.dp)
-                        .testTag("save_edit_button"),
-                    shape = RoundedCornerShape(7.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(13.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Save Changes",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
+                    // 100% Full-Width Body Content Editor Area
+                    val editorBoxBg = when {
+                        isCodeCategory -> if (isDark) Color(0xFF1E293B) else Color(0xFFEEF2F6)
+                        else -> if (isDark) Color(0xFF0F172A) else Color(0xFFF8FAFC)
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = editorBoxBg,
+                        border = BorderStroke(
+                            width = 1.dp,
+                            color = if (isContentFocused) pillSelectedBg.copy(alpha = 0.55f) else cardBorderColor
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight()
+                    ) {
+                        BasicTextField(
+                            value = editedText,
+                            onValueChange = { editedText = it },
+                            minLines = 6,
+                            maxLines = 11,
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                fontFamily = if (isCodeCategory) FontFamily.Monospace else FontFamily.Default,
+                                fontSize = if (isCodeCategory) 12.5.sp else 13.5.sp,
+                                lineHeight = 19.sp,
+                                color = if (isCodeCategory) {
+                                    if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B)
+                                } else {
+                                    navyTextColor
+                                }
+                            ),
+                            cursorBrush = SolidColor(pillSelectedBg),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                .onFocusChanged { isContentFocused = it.isFocused }
+                                .testTag("edit_clip_text_input"),
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.TopStart
+                                ) {
+                                    if (editedText.isEmpty()) {
+                                        Text(
+                                            text = "Paste or type your content here...",
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontFamily = if (isCodeCategory) FontFamily.Monospace else FontFamily.Default,
+                                                fontSize = 13.sp,
+                                                lineHeight = 19.sp
+                                            ),
+                                            color = bodyTextColor.copy(alpha = 0.65f)
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            }
                         )
-                    )
+                    }
+
+                    // Professional Full-Width Footer Action Buttons Row (Light Red Cancel + Royal Blue Save Changes)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Light Red Professional Cancel Button
+                        Surface(
+                            onClick = onBack,
+                            shape = RoundedCornerShape(10.dp),
+                            color = cancelBtnBg,
+                            border = BorderStroke(1.dp, cancelBtnBorder),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(38.dp)
+                                .testTag("cancel_edit_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxSize(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = null,
+                                    tint = cancelBtnText,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = "Cancel",
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    ),
+                                    color = cancelBtnText
+                                )
+                            }
+                        }
+
+                        // Royal Blue Professional Save Changes Button
+                        Button(
+                            onClick = saveChangesAction,
+                            enabled = editedText.isNotBlank(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = pillSelectedBg,
+                                contentColor = Color.White,
+                                disabledContainerColor = pillUnselectedBg,
+                                disabledContentColor = pillUnselectedText.copy(alpha = 0.5f)
+                            ),
+                            elevation = ButtonDefaults.buttonElevation(
+                                defaultElevation = 2.dp,
+                                pressedElevation = 4.dp,
+                                disabledElevation = 0.dp
+                            ),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .weight(1.35f)
+                                .height(38.dp)
+                                .testTag("save_edit_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Save Changes",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }
