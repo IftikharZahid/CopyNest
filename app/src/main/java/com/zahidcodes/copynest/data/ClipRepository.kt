@@ -73,4 +73,20 @@ class ClipRepository(private val clipDao: ClipDao) {
         linkDescription = linkDescription,
         linkFaviconBase64 = linkFaviconBase64
     )
+
+    suspend fun getDeletedClip(hash: String): DeletedClipEntity? = clipDao.getDeletedClip(hash)
+
+    suspend fun insertDeletedClip(deletedClip: DeletedClipEntity) =
+        clipDao.insertDeletedClip(deletedClip)
+
+    suspend fun insertDeletedClips(deletedClips: List<DeletedClipEntity>) =
+        clipDao.insertDeletedClips(deletedClips)
+
+    suspend fun deleteDeletedClip(hash: String) = clipDao.deleteDeletedClip(hash)
+
+    suspend fun deleteDeletedClips(hashes: List<String>) = clipDao.deleteDeletedClips(hashes)
+
+    suspend fun pruneOldDeletedClips(cutoffTime: Long) = clipDao.pruneOldDeletedClips(cutoffTime)
+
+    suspend fun deleteAllDeletedClips() = clipDao.deleteAllDeletedClips()
 }

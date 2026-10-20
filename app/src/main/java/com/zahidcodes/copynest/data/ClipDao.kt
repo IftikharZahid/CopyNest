@@ -103,4 +103,25 @@ interface ClipDao {
         linkDescription: String,
         linkFaviconBase64: String
     )
+
+    @Query("SELECT * FROM deleted_clips WHERE contentHash = :hash LIMIT 1")
+    suspend fun getDeletedClip(hash: String): DeletedClipEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDeletedClip(deletedClip: DeletedClipEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDeletedClips(deletedClips: List<DeletedClipEntity>)
+
+    @Query("DELETE FROM deleted_clips WHERE contentHash = :hash")
+    suspend fun deleteDeletedClip(hash: String)
+
+    @Query("DELETE FROM deleted_clips WHERE contentHash IN (:hashes)")
+    suspend fun deleteDeletedClips(hashes: List<String>)
+
+    @Query("DELETE FROM deleted_clips WHERE deletedAt < :cutoffTime")
+    suspend fun pruneOldDeletedClips(cutoffTime: Long)
+
+    @Query("DELETE FROM deleted_clips")
+    suspend fun deleteAllDeletedClips()
 }

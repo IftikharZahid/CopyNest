@@ -9,10 +9,12 @@ import androidx.lifecycle.viewModelScope
 import com.zahidcodes.copynest.data.ClipDatabase
 import com.zahidcodes.copynest.data.ClipEntity
 import com.zahidcodes.copynest.data.ClipRepository
+import com.zahidcodes.copynest.data.DeletedClipEntity
 import com.zahidcodes.copynest.data.LinkMetadata
 import com.zahidcodes.copynest.data.LinkMetadataEntity
 import com.zahidcodes.copynest.data.LinkMetadataManager
 import com.zahidcodes.copynest.data.UserPreferences
+import java.security.MessageDigest
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -33,6 +35,9 @@ class ClipboardViewModel(context: Context) : ViewModel() {
 
     @Volatile
     private var lastProcessedClipText: String? = null
+
+    @Volatile
+    private var lastProcessedClipTimestamp: Long = 0L
 
     @Volatile
     private var hasCompletedInitialHomeLoad: Boolean = false
@@ -58,7 +63,7 @@ class ClipboardViewModel(context: Context) : ViewModel() {
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
 
     private val clipChangedListener = ClipboardManager.OnPrimaryClipChangedListener {
-        checkClipboardAndSave(appContext, force = false)
+        checkClipboardAndSave(appContext, force = false, isFromListener = true)
     }
 
     init {
@@ -70,6 +75,11 @@ class ClipboardViewModel(context: Context) : ViewModel() {
         viewModelScope.launch {
             try {
                 clipboardMutex.withLock {
+                    // Prune old deleted records older than 30 days
+                    try {
+                        repository.pruneOldDeletedClips(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000L)
+                    } catch (_: Exception) {}
+
                     // Clean up duplicate records and auto-assign category (Text, Links, Code) for existing records
                     val all = repository.getAllClipsList()
                     val seenTexts = HashSet<String>()
@@ -115,7 +125,30 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                     // Hydrate in-memory LinkMetadataManager state store from Room database so cached links never re-fetch
                     LinkMetadataManager.hydrateFromDatabase(repository, activeClips)
 
-                    lastProcessedClipText = repository.getMostRecentClip()?.text?.trim()
+                    // Inspect initial system clipboard state to prevent stale deleted clipboard items from re-importing
+                    val initialClipboard = readCurrentClipboardData(appContext)
+                    if (initialClipboard != null) {
+                        val clipText = initialClipboard.text
+                        val clipTimestamp = initialClipboard.timestamp
+                        val hash = computeContentFingerprint(clipText)
+                        val isExisting = activeClips.any { it.text.trim() == clipText }
+                        val deletedRecord = repository.getDeletedClip(hash)
+                        if (deletedRecord != null) {
+                            deletedHashesCache.add(hash)
+                        }
+                        val isDeletedStale = deletedRecord != null && (
+                            (clipTimestamp > 0L && clipTimestamp <= deletedRecord.deletedAt) ||
+                            (deletedRecord.clipboardTimestamp > 0L && clipTimestamp <= deletedRecord.clipboardTimestamp) ||
+                            (clipTimestamp <= 0L)
+                        )
+                        if (isExisting || isDeletedStale) {
+                            lastProcessedClipText = clipText
+                            lastProcessedClipTimestamp = clipTimestamp
+                        }
+                    }
+                    if (lastProcessedClipText == null) {
+                        lastProcessedClipText = activeClips.firstOrNull()?.text?.trim()
+                    }
                 }
                 // Wait for the Room flow to emit its initial snapshot
                 repository.allClips.first()
@@ -127,7 +160,15 @@ class ClipboardViewModel(context: Context) : ViewModel() {
         }
         try {
             val clipboardManager = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-            clipboardManager?.addPrimaryClipChangedListener(clipChangedListener)
+            synchronized(listenerLock) {
+                activeClipboardListener?.let { oldListener ->
+                    try {
+                        clipboardManager?.removePrimaryClipChangedListener(oldListener)
+                    } catch (_: Exception) {}
+                }
+                clipboardManager?.addPrimaryClipChangedListener(clipChangedListener)
+                activeClipboardListener = clipChangedListener
+            }
         } catch (e: Exception) {
             // Ignore clipboard listener registration restrictions
         }
@@ -137,7 +178,12 @@ class ClipboardViewModel(context: Context) : ViewModel() {
         super.onCleared()
         try {
             val clipboardManager = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-            clipboardManager?.removePrimaryClipChangedListener(clipChangedListener)
+            synchronized(listenerLock) {
+                clipboardManager?.removePrimaryClipChangedListener(clipChangedListener)
+                if (activeClipboardListener === clipChangedListener) {
+                    activeClipboardListener = null
+                }
+            }
         } catch (e: Exception) {
             // Ignore
         }
@@ -206,14 +252,14 @@ class ClipboardViewModel(context: Context) : ViewModel() {
         requestScrollToTop()
         if (hasCompletedInitialHomeLoad) {
             _isLoading.value = false
-            checkClipboardAndSave(context, force = false)
+            checkClipboardAndSave(context, force = false, isFromListener = false)
             return
         }
         viewModelScope.launch {
             _isLoading.value = true
             val startTime = System.currentTimeMillis()
             initialDatabaseLoadComplete.await()
-            checkClipboardAndSaveSuspend(context, force = false)
+            checkClipboardAndSaveSuspend(context, force = false, isFromListener = false)
             val elapsed = System.currentTimeMillis() - startTime
             if (elapsed < 280L) {
                 delay(280L - elapsed)
@@ -226,7 +272,7 @@ class ClipboardViewModel(context: Context) : ViewModel() {
 
     fun onAppForegrounded(context: Context) {
         requestScrollToTop()
-        checkClipboardAndSave(context, force = false)
+        checkClipboardAndSave(context, force = false, isFromListener = false)
     }
 
     fun setSearchQuery(query: String) {
@@ -243,22 +289,38 @@ class ClipboardViewModel(context: Context) : ViewModel() {
         val trimmed = text.trim()
         lastInternalCopiedText = trimmed
         lastProcessedClipText = trimmed
+        lastProcessedClipTimestamp = System.currentTimeMillis()
     }
 
-    private fun readCurrentClipboardText(context: Context): String? {
+    data class SystemClipboardData(
+        val text: String,
+        val timestamp: Long
+    )
+
+    private fun readCurrentClipboardData(context: Context): SystemClipboardData? {
         return try {
             val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
             val clipData = clipboardManager?.primaryClip
             if (clipData != null && clipData.itemCount > 0) {
                 val item = clipData.getItemAt(0)
                 val rawText = item.text?.toString() ?: item.coerceToText(context)?.toString()
-                rawText?.trim()?.takeIf { it.isNotEmpty() }
+                val text = rawText?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+                val timestamp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    clipData.description?.timestamp ?: 0L
+                } else {
+                    0L
+                }
+                SystemClipboardData(text = text, timestamp = timestamp)
             } else {
                 null
             }
         } catch (e: Exception) {
             null
         }
+    }
+
+    private fun readCurrentClipboardText(context: Context): String? {
+        return readCurrentClipboardData(context)?.text
     }
 
     private suspend fun resolveCachedLinkMetadataForUrl(normalizedUrl: String): LinkMetadata? {
@@ -278,15 +340,11 @@ class ClipboardViewModel(context: Context) : ViewModel() {
     private suspend fun checkClipboardAndSaveSuspend(
         context: Context,
         force: Boolean = false,
+        isFromListener: Boolean = false,
         onResult: ((Boolean, String) -> Unit)? = null
     ) {
-        if (!force) {
-            val isAutoCaptureEnabled = try {
-                userPreferences.autoCaptureFlow.first()
-            } catch (e: Exception) {
-                autoCapture.value
-            }
-            if (!isAutoCaptureEnabled) return
+        if (!force && !autoCapture.value) {
+            return
         }
 
         // Serialize all clipboard checks with a Mutex so concurrent lifecycle/listener triggers
@@ -295,10 +353,73 @@ class ClipboardViewModel(context: Context) : ViewModel() {
             val retryDelays = if (force) listOf(0L) else listOf(0L, 120L)
             for (delayMs in retryDelays) {
                 if (delayMs > 0L) delay(delayMs)
-                val text = readCurrentClipboardText(context)
-                if (!text.isNullOrEmpty()) {
-                    if (!force && (text == lastInternalCopiedText || text == lastProcessedClipText)) {
+                val clipData = readCurrentClipboardData(context)
+                if (clipData != null && clipData.text.isNotEmpty()) {
+                    val text = clipData.text
+                    val clipTimestamp = clipData.timestamp
+                    val hash = computeContentFingerprint(text)
+
+                    // 1. Skip if internal copy by the app
+                    if (!force && text == lastInternalCopiedText) {
                         return@withLock
+                    }
+                    if (text != lastInternalCopiedText) {
+                        lastInternalCopiedText = null
+                    }
+
+                    val deletedRecord = if (deletedHashesCache.contains(hash) || !initialDatabaseLoadComplete.isCompleted) {
+                        repository.getDeletedClip(hash)
+                    } else {
+                        null
+                    }
+
+                    // 2. Skip if already processed in this session with same or older timestamp
+                    // (unless this is a fresh listener copy event for a previously deleted item)
+                    if (!force && text == lastProcessedClipText && !(isFromListener && deletedRecord != null)) {
+                        if (clipTimestamp <= 0L || clipTimestamp <= lastProcessedClipTimestamp) {
+                            return@withLock
+                        }
+                    }
+
+                    // 3. Persistent deletion check: ensure previously deleted entries are not resurrected
+                    if (deletedRecord != null && !force) {
+                        // Determine whether this clipboard item is old stale content from before deletion,
+                        // or a genuine new copy event that occurred after deletion.
+                        val isLegitimateNewCopy = when {
+                            isFromListener -> {
+                                // OnPrimaryClipChangedListener only fires when primary clip is actively set
+                                clipTimestamp <= 0L ||
+                                    clipTimestamp >= deletedRecord.deletedAt ||
+                                    (deletedRecord.clipboardTimestamp > 0L && clipTimestamp > deletedRecord.clipboardTimestamp)
+                            }
+                            clipTimestamp > 0L -> {
+                                val afterDeletion = clipTimestamp > deletedRecord.deletedAt
+                                val newerThanDeletedClipboard = deletedRecord.clipboardTimestamp > 0L &&
+                                    clipTimestamp > deletedRecord.clipboardTimestamp
+                                afterDeletion || newerThanDeletedClipboard
+                            }
+                            else -> {
+                                // Startup or resume polling: stale clipboard content must NOT be re-imported
+                                false
+                            }
+                        }
+
+                        if (!isLegitimateNewCopy) {
+                            lastProcessedClipText = text
+                            lastProcessedClipTimestamp = clipTimestamp
+                            return@withLock
+                        } else {
+                            // Legitimate new copy: remove tombstone since user explicitly re-copied this content
+                            deletedHashesCache.remove(hash)
+                            repository.deleteDeletedClip(hash)
+                        }
+                    }
+
+                    // Since the system clipboard now holds valid content different from any stale deleted clip,
+                    // any previous deletion tombstones are no longer sitting on the system clipboard.
+                    if (deletedHashesCache.isNotEmpty()) {
+                        deletedHashesCache.clear()
+                        repository.deleteAllDeletedClips()
                     }
 
                     val contentType = detectContentType(text)
@@ -325,6 +446,7 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                         )
                         val insertedId = repository.insertClip(newClip)
                         lastProcessedClipText = text
+                        lastProcessedClipTimestamp = clipTimestamp
                         requestScrollToTop()
                         if (linkUrl.isNotBlank() && cachedMeta == null) {
                             requestLinkMetadata(linkUrl, insertedId)
@@ -332,6 +454,7 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                         onResult?.invoke(true, "Saved as $autoCategory!")
                     } else {
                         lastProcessedClipText = text
+                        lastProcessedClipTimestamp = clipTimestamp
                         val updatedClip = existingClip.copy(
                             contentType = contentType,
                             category = if (existingClip.category.isBlank() || existingClip.category.equals("General", ignoreCase = true)) {
@@ -369,10 +492,11 @@ class ClipboardViewModel(context: Context) : ViewModel() {
     fun checkClipboardAndSave(
         context: Context,
         force: Boolean = false,
+        isFromListener: Boolean = false,
         onResult: ((Boolean, String) -> Unit)? = null
     ) {
         viewModelScope.launch {
-            checkClipboardAndSaveSuspend(context, force, onResult)
+            checkClipboardAndSaveSuspend(context, force, isFromListener, onResult)
         }
     }
 
@@ -381,6 +505,11 @@ class ClipboardViewModel(context: Context) : ViewModel() {
         if (trimmedText.isBlank()) return
         viewModelScope.launch {
             clipboardMutex.withLock {
+                val hash = computeContentFingerprint(trimmedText)
+                if (deletedHashesCache.remove(hash)) {
+                    repository.deleteDeletedClip(hash)
+                }
+
                 val detectedType = detectContentType(trimmedText)
                 val contentType = when {
                     category.equals("Links", ignoreCase = true) -> "URL"
@@ -413,6 +542,7 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                 )
                 val insertedId = repository.insertClip(newClip)
                 lastProcessedClipText = trimmedText
+                lastProcessedClipTimestamp = System.currentTimeMillis()
                 requestScrollToTop()
                 if (linkUrl.isNotBlank() && cachedMeta == null) {
                     requestLinkMetadata(linkUrl, insertedId)
@@ -432,6 +562,11 @@ class ClipboardViewModel(context: Context) : ViewModel() {
         if (trimmedText.isBlank()) return
         viewModelScope.launch {
             clipboardMutex.withLock {
+                val hash = computeContentFingerprint(trimmedText)
+                if (deletedHashesCache.remove(hash)) {
+                    repository.deleteDeletedClip(hash)
+                }
+
                 val detectedType = detectContentType(trimmedText)
                 val contentType = when {
                     newCategory.equals("Links", ignoreCase = true) -> "URL"
@@ -485,6 +620,7 @@ class ClipboardViewModel(context: Context) : ViewModel() {
                 )
                 repository.updateClip(updated)
                 lastProcessedClipText = trimmedText
+                lastProcessedClipTimestamp = System.currentTimeMillis()
                 if (linkUrl.isNotBlank() && !updated.linkMetadataLoaded) {
                     requestLinkMetadata(linkUrl, clip.id)
                 }
@@ -497,10 +633,25 @@ class ClipboardViewModel(context: Context) : ViewModel() {
             clipboardMutex.withLock {
                 val clip = repository.getClipById(id)
                 if (clip != null) {
-                    // Mark deleted clip text as already processed so auto-capture does not re-add it
                     val deletedText = clip.text.trim()
+                    val hash = computeContentFingerprint(deletedText)
+                    val currentClipboard = readCurrentClipboardData(appContext)
+                    val isOnClipboard = currentClipboard != null &&
+                        computeContentFingerprint(currentClipboard.text) == hash
+                    val clipTimestamp = if (isOnClipboard) currentClipboard.timestamp else 0L
+
+                    // Persist tombstone in Room to prevent re-import upon app restarts
+                    val deletedEntity = DeletedClipEntity(
+                        contentHash = hash,
+                        normalizedText = deletedText.take(500),
+                        deletedAt = System.currentTimeMillis(),
+                        clipboardTimestamp = clipTimestamp
+                    )
+                    deletedHashesCache.add(hash)
+                    repository.insertDeletedClip(deletedEntity)
+
                     lastProcessedClipText = deletedText
-                    lastInternalCopiedText = deletedText
+                    lastProcessedClipTimestamp = clipTimestamp
                 }
                 repository.deleteClipById(id)
             }
@@ -512,20 +663,34 @@ class ClipboardViewModel(context: Context) : ViewModel() {
         val idList = ids.toList()
         viewModelScope.launch {
             clipboardMutex.withLock {
-                val currentClipText = readCurrentClipboardText(appContext)
+                val currentClipboard = readCurrentClipboardData(appContext)
+                val currentHash = currentClipboard?.let { computeContentFingerprint(it.text) }
+                val now = System.currentTimeMillis()
+                val deletedEntities = mutableListOf<DeletedClipEntity>()
+
                 for (id in idList) {
-                    val clip = repository.getClipById(id)
-                    if (clip != null) {
-                        val deletedText = clip.text.trim()
-                        if (currentClipText == null || deletedText == currentClipText) {
-                            lastProcessedClipText = deletedText
-                            lastInternalCopiedText = deletedText
-                        }
+                    val clip = repository.getClipById(id) ?: continue
+                    val text = clip.text.trim()
+                    val hash = computeContentFingerprint(text)
+                    val isOnClipboard = currentHash != null && currentHash == hash
+                    val clipTimestamp = if (isOnClipboard) (currentClipboard?.timestamp ?: 0L) else 0L
+
+                    deletedHashesCache.add(hash)
+                    deletedEntities.add(
+                        DeletedClipEntity(
+                            contentHash = hash,
+                            normalizedText = text.take(500),
+                            deletedAt = now,
+                            clipboardTimestamp = clipTimestamp
+                        )
+                    )
+                    if (isOnClipboard) {
+                        lastProcessedClipText = text
+                        lastProcessedClipTimestamp = clipTimestamp
                     }
                 }
-                if (!currentClipText.isNullOrEmpty()) {
-                    lastProcessedClipText = currentClipText
-                    lastInternalCopiedText = currentClipText
+                if (deletedEntities.isNotEmpty()) {
+                    repository.insertDeletedClips(deletedEntities)
                 }
                 repository.deleteClipsByIds(idList)
             }
@@ -535,11 +700,31 @@ class ClipboardViewModel(context: Context) : ViewModel() {
     fun deleteAllClips() {
         viewModelScope.launch {
             clipboardMutex.withLock {
-                val currentClipText = readCurrentClipboardText(appContext)
-                    ?: repository.getMostRecentClip()?.text?.trim()
-                if (!currentClipText.isNullOrEmpty()) {
-                    lastProcessedClipText = currentClipText
-                    lastInternalCopiedText = currentClipText
+                val currentClipboard = readCurrentClipboardData(appContext)
+                val currentHash = currentClipboard?.let { computeContentFingerprint(it.text) }
+                val now = System.currentTimeMillis()
+
+                val allClips = repository.getAllClipsList()
+                val deletedEntities = allClips.map { clip ->
+                    val text = clip.text.trim()
+                    val hash = computeContentFingerprint(text)
+                    deletedHashesCache.add(hash)
+                    val isOnClipboard = currentHash != null && currentHash == hash
+                    val clipTimestamp = if (isOnClipboard) (currentClipboard?.timestamp ?: 0L) else 0L
+                    DeletedClipEntity(
+                        contentHash = hash,
+                        normalizedText = text.take(500),
+                        deletedAt = now,
+                        clipboardTimestamp = clipTimestamp
+                    )
+                }
+                if (deletedEntities.isNotEmpty()) {
+                    repository.insertDeletedClips(deletedEntities)
+                }
+                if (currentClipboard != null) {
+                    lastProcessedClipText = currentClipboard.text
+                    lastProcessedClipTimestamp = currentClipboard.timestamp
+                    lastInternalCopiedText = currentClipboard.text
                 }
 
                 try {
@@ -742,6 +927,19 @@ class ClipboardViewModel(context: Context) : ViewModel() {
             LinkMetadataManager.extractFirstLink(trimmed) != null -> "URL"
 
             else -> "TEXT"
+        }
+    }
+
+    companion object {
+        private val listenerLock = Any()
+        private var activeClipboardListener: ClipboardManager.OnPrimaryClipChangedListener? = null
+        private val deletedHashesCache: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
+        fun computeContentFingerprint(text: String): String {
+            val trimmed = text.trim()
+            val md = MessageDigest.getInstance("SHA-256")
+            val digest = md.digest(trimmed.toByteArray(Charsets.UTF_8))
+            return digest.joinToString("") { "%02x".format(it) }
         }
     }
 }

@@ -8,8 +8,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [ClipEntity::class, LinkMetadataEntity::class],
-    version = 3,
+    entities = [ClipEntity::class, LinkMetadataEntity::class, DeletedClipEntity::class],
+    version = 4,
     exportSchema = false
 )
 abstract class ClipDatabase : RoomDatabase() {
@@ -52,6 +52,22 @@ abstract class ClipDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `deleted_clips` (
+                        `contentHash` TEXT NOT NULL,
+                        `normalizedText` TEXT NOT NULL DEFAULT '',
+                        `deletedAt` INTEGER NOT NULL,
+                        `clipboardTimestamp` INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY(`contentHash`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getDatabase(context: Context): ClipDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -59,7 +75,7 @@ abstract class ClipDatabase : RoomDatabase() {
                     ClipDatabase::class.java,
                     "copynest_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

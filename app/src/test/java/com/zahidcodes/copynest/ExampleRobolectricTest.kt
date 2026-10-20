@@ -174,4 +174,161 @@ class ExampleRobolectricTest {
         viewModel.onAppForegrounded(context)
         assertTrue("Expected scrollToTopVersion to increment when app is reopened/foregrounded", viewModel.scrollToTopVersion.value > beforeResumeScrollVersion)
     }
+
+    @Test
+    fun `deleted clipboard entry is not re-imported after app restart or foregrounding, but legitimate new copy is saved`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = ClipDatabase.getDatabase(context)
+        runBlocking {
+            db.clipDao().deleteAllClips()
+            db.clipDao().deleteAllDeletedClips()
+        }
+
+        // 1. First session: app opens and imports the clipboard content
+        val viewModel1 = ClipboardViewModel(context)
+        for (i in 0 until 5) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(40)
+        }
+
+        val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val deletedText = "Secret API token to delete 998877"
+        clipboardManager.setPrimaryClip(ClipData.newPlainText("test", deletedText))
+
+        viewModel1.checkClipboardAndSave(context)
+        for (i in 0 until 6) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        shadowOf(Looper.getMainLooper()).idle()
+
+        val initialClips = runBlocking { db.clipDao().getAllClipsList() }
+        assertEquals("Expected initial clip to be imported", 1, initialClips.size)
+        val savedClip = initialClips.first()
+        assertEquals(deletedText, savedClip.text)
+
+        // 2. User deletes the clip from the app while the text remains on the system clipboard
+        viewModel1.deleteClip(savedClip.id)
+        for (i in 0 until 6) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        assertEquals("Expected clip to be deleted from DB", 0, runBlocking { db.clipDao().getAllClipsList().size })
+        val tombstone = runBlocking {
+            db.clipDao().getDeletedClip(ClipboardViewModel.computeContentFingerprint(deletedText))
+        }
+        assertNotNull("Expected persistent deletion tombstone in Room DB", tombstone)
+
+        // 3. Simulate lifecycle callbacks (resume / home screen shown / repeated checks)
+        viewModel1.onAppForegrounded(context)
+        viewModel1.onHomeScreenShown(context)
+        viewModel1.checkClipboardAndSave(context)
+        for (i in 0 until 6) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        assertEquals(
+            "Deleted clip must not be re-imported on foreground/home callbacks",
+            0,
+            runBlocking { db.clipDao().getAllClipsList().size }
+        )
+
+        // 4. Simulate full app close and reopen (new ViewModel instance with fresh in-memory state)
+        val viewModel2 = ClipboardViewModel(context)
+        for (i in 0 until 5) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(40)
+        }
+        viewModel2.onHomeScreenShown(context)
+        viewModel2.onAppForegrounded(context)
+        viewModel2.checkClipboardAndSave(context)
+        for (i in 0 until 6) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        assertEquals(
+            "Deleted clip must not be re-imported after app restart",
+            0,
+            runBlocking { db.clipDao().getAllClipsList().size }
+        )
+
+        // 5. Copying genuinely new content works normally
+        val newContent = "Brand new copied note 554433"
+        clipboardManager.setPrimaryClip(ClipData.newPlainText("test", newContent))
+        viewModel2.checkClipboardAndSave(context)
+        for (i in 0 until 6) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        val clipsAfterNewCopy = runBlocking { db.clipDao().getAllClipsList() }
+        assertEquals("Expected new content to be saved", 1, clipsAfterNewCopy.size)
+        assertEquals(newContent, clipsAfterNewCopy.first().text)
+
+        // 6. Intentionally copying the previously deleted text again as a fresh copy event saves it
+        Thread.sleep(20)
+        clipboardManager.setPrimaryClip(ClipData.newPlainText("test", deletedText))
+        viewModel2.checkClipboardAndSave(context, isFromListener = true)
+        for (i in 0 until 6) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        val clipsAfterReCopy = runBlocking { db.clipDao().getAllClipsList() }
+        assertEquals("Expected intentionally re-copied text to be saved again", 2, clipsAfterReCopy.size)
+        assertTrue(clipsAfterReCopy.any { it.text == deletedText })
+    }
+
+    @Test
+    fun `splash screen enforces mandatory force update and blocks transition until update completes`() {
+        var navigatedToMain = false
+        var retried = false
+        composeTestRule.mainClock.autoAdvance = false
+
+        val uiStateHolder = androidx.compose.runtime.mutableStateOf<com.zahidcodes.copynest.update.SplashUpdateUiState>(
+            com.zahidcodes.copynest.update.SplashUpdateUiState.Checking()
+        )
+
+        composeTestRule.setContent {
+            CopyNestTheme(themeMode = "DARK") {
+                SplashScreen(
+                    onTimeout = { navigatedToMain = true },
+                    updateUiState = uiStateHolder.value,
+                    onRetryUpdate = { retried = true }
+                )
+            }
+        }
+
+        // During Checking state, "Checking for updates..." status indicator must not be shown
+        composeTestRule.onNodeWithTag("splash_screen").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("splash_update_status").assertDoesNotExist()
+
+        // Transition to blocked mandatory update state
+        uiStateHolder.value = com.zahidcodes.copynest.update.SplashUpdateUiState.UpdateRequiredBlocked(
+            reason = com.zahidcodes.copynest.update.UpdateBlockReason.USER_CANCELLED,
+            title = "Mandatory Update Required",
+            message = "A mandatory update is required to continue using CopyNest.",
+            availableVersionCode = 99,
+            canRetryInApp = true,
+            showOpenPlayStore = true
+        )
+
+        // Advance past the full splash animation timeline across frames
+        composeTestRule.mainClock.advanceTimeBy(400L)
+        composeTestRule.mainClock.advanceTimeBy(1700L)
+        composeTestRule.mainClock.advanceTimeBy(800L)
+
+        // Splash screen must remain visible and NOT call onTimeout while mandatory update is pending
+        composeTestRule.onNodeWithTag("splash_screen").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("splash_force_update_card").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("splash_retry_update_button").assertIsDisplayed()
+        assertFalse("Main app navigation must be blocked when mandatory update is required", navigatedToMain)
+
+        // Once update check allows proceeding, splash screen immediately triggers onTimeout to redirect to HomeScreen
+        composeTestRule.mainClock.autoAdvance = true
+        composeTestRule.runOnIdle {
+            uiStateHolder.value = com.zahidcodes.copynest.update.SplashUpdateUiState.AllowedToProceed
+        }
+        composeTestRule.waitForIdle()
+        assertTrue("Splash screen must redirect to HomeScreen once AllowedToProceed is reached", navigatedToMain)
+    }
 }
+
