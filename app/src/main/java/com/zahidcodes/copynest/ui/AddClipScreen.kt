@@ -7,9 +7,12 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -18,6 +21,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -26,6 +31,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -117,12 +124,17 @@ fun AddClipScreen(
     var categoryMenuExpanded by remember { mutableStateOf(false) }
     var isTitleFocused by remember { mutableStateOf(false) }
     var isContentFocused by remember { mutableStateOf(false) }
+    val contentFocusRequester = remember { FocusRequester() }
+    val scrollState = rememberScrollState()
 
     val categories = listOf("Text", "Links", "Code", "Study", "Work", "Important")
     val wordCount = remember(textContent) {
         if (textContent.isBlank()) 0 else textContent.trim().split("\\s+".toRegex()).size
     }
     val charCount = textContent.length
+    val lineCount = remember(textContent) {
+        if (textContent.isEmpty()) 1 else textContent.count { it == '\n' } + 1
+    }
 
     LaunchedEffect(textContent) {
         if (!hasManualCategory && textContent.isNotBlank()) {
@@ -162,13 +174,12 @@ fun AddClipScreen(
                 .fillMaxSize()
                 .background(screenBgColor)
                 .padding(paddingValues)
-                .imePadding()
-                .padding(horizontal = 14.dp),
+                .consumeWindowInsets(paddingValues)
+                .padding(horizontal = 14.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Spacer(modifier = Modifier.height(2.dp))
 
-            // Top Brand Header Row matching HomeScreen
+            // Fixed Top Brand Header Row matching HomeScreen
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -239,14 +250,9 @@ fun AddClipScreen(
                 Surface(
                     shape = RoundedCornerShape(20.dp),
                     color = pillUnselectedBg,
-                    border = if (isTitleFocused) {
-                        BorderStroke(1.2.dp, pillSelectedBg)
-                    } else {
-                        null
-                    },
                     modifier = Modifier
                         .weight(1f)
-                        .height(38.dp)
+                        .height(36.dp)
                 ) {
                     BasicTextField(
                         value = noteTitle,
@@ -436,317 +442,361 @@ fun AddClipScreen(
                 }
             }
 
-            // Full-Width Note Editor Card styled in the HomeScreen ClipCard format
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = cardBgColor,
-                shadowElevation = if (isDark) 0.dp else 1.8.dp,
-                border = BorderStroke(
-                    width = if (isContentFocused) 1.4.dp else 1.dp,
-                    color = if (isContentFocused) pillSelectedBg else cardBorderColor
-                ),
+            // Dynamic Content-Aware Note Editor Card (grows naturally with text & caps above keyboard so buttons stay visible)
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .wrapContentHeight()
+                    .weight(1f)
             ) {
-                Column(
+                val maxEditorHeight = (maxHeight - 140.dp).coerceAtLeast(64.dp)
+                val minEditorHeight = 110.dp.coerceAtMost(maxEditorHeight)
+
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = cardBgColor,
+                    shadowElevation = if (isDark) 0.dp else 1.8.dp,
+                    border = BorderStroke(1.dp, cardBorderColor),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .wrapContentHeight()
+                        .padding(bottom = 4.dp)
                 ) {
-                    // Card Header Row: Category Logo Box + Live Title + Paste/Clear Actions
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .wrapContentHeight()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        // Card Header Row: Category Logo Box + Live Title + Paste/Clear Actions
                         Row(
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = currentCategorySpec.boxBg,
-                                modifier = Modifier.size(36.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
-                                    Icon(
-                                        imageVector = currentCategorySpec.icon,
-                                        contentDescription = selectedCategory,
-                                        tint = currentCategorySpec.iconTint,
-                                        modifier = Modifier
-                                            .size(19.dp)
-                                            .rotate(currentCategorySpec.rotateDegrees)
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = currentCategorySpec.boxBg,
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Icon(
+                                            imageVector = currentCategorySpec.icon,
+                                            contentDescription = selectedCategory,
+                                            tint = currentCategorySpec.iconTint,
+                                            modifier = Modifier
+                                                .size(19.dp)
+                                                .rotate(currentCategorySpec.rotateDegrees)
+                                        )
+                                    }
+                                }
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = noteTitle.ifBlank {
+                                            when {
+                                                isCodeCategory -> "Code Snippet"
+                                                isLinkCategory -> "Website Link"
+                                                else -> "New $selectedCategory Note"
+                                            }
+                                        },
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.5.sp,
+                                            lineHeight = 18.sp
+                                        ),
+                                        color = navyTextColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Schedule,
+                                            contentDescription = null,
+                                            tint = timestampColor,
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                        Text(
+                                            text = "Just now • $selectedCategory",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                fontSize = 11.sp
+                                            ),
+                                            color = timestampColor,
+                                            maxLines = 1
+                                        )
+                                    }
                                 }
                             }
 
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = noteTitle.ifBlank {
-                                        when {
-                                            isCodeCategory -> "Code Snippet"
-                                            isLinkCategory -> "Website Link"
-                                            else -> "New $selectedCategory Note"
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (textContent.isNotEmpty()) {
+                                    Surface(
+                                        onClick = { textContent = "" },
+                                        shape = RoundedCornerShape(50),
+                                        color = cancelBtnBg,
+                                        modifier = Modifier.height(26.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Clear,
+                                                contentDescription = "Clear",
+                                                tint = cancelBtnText,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "Clear",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                ),
+                                                color = cancelBtnText
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Surface(
+                                    onClick = {
+                                        try {
+                                            val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                            val clipData = clipboardManager?.primaryClip
+                                            if (clipData != null && clipData.itemCount > 0) {
+                                                val item = clipData.getItemAt(0)
+                                                val text = item.text?.toString() ?: item.coerceToText(context)?.toString()
+                                                if (!text.isNullOrBlank()) {
+                                                    textContent = if (textContent.isBlank()) text else "$textContent\n$text"
+                                                    Toast.makeText(context, "Pasted from clipboard", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, "Clipboard has no text", Toast.LENGTH_SHORT).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } catch (_: Exception) {
+                                            Toast.makeText(context, "Could not read clipboard", Toast.LENGTH_SHORT).show()
                                         }
                                     },
-                                    style = MaterialTheme.typography.titleSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.5.sp,
-                                        lineHeight = 18.sp
-                                    ),
-                                    color = navyTextColor,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Schedule,
-                                        contentDescription = null,
-                                        tint = timestampColor,
-                                        modifier = Modifier.size(11.dp)
-                                    )
-                                    Text(
-                                        text = "Just now • $selectedCategory",
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 11.sp
-                                        ),
-                                        color = timestampColor,
-                                        maxLines = 1
-                                    )
-                                }
-                            }
-                        }
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (textContent.isNotEmpty()) {
-                                Surface(
-                                    onClick = { textContent = "" },
                                     shape = RoundedCornerShape(50),
-                                    color = cancelBtnBg,
+                                    color = pillUnselectedBg,
                                     modifier = Modifier.height(26.dp)
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                        modifier = Modifier.padding(horizontal = 9.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Clear,
-                                            contentDescription = "Clear",
-                                            tint = cancelBtnText,
+                                            imageVector = Icons.Outlined.ContentPaste,
+                                            contentDescription = "Paste",
+                                            tint = pillSelectedBg,
                                             modifier = Modifier.size(12.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
                                         Text(
-                                            text = "Clear",
+                                            text = "Paste",
                                             style = MaterialTheme.typography.labelSmall.copy(
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold
                                             ),
-                                            color = cancelBtnText
+                                            color = pillSelectedBg
                                         )
                                     }
                                 }
                             }
+                        }
 
-                            Surface(
-                                onClick = {
-                                    try {
-                                        val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                                        val clipData = clipboardManager?.primaryClip
-                                        if (clipData != null && clipData.itemCount > 0) {
-                                            val item = clipData.getItemAt(0)
-                                            val text = item.text?.toString() ?: item.coerceToText(context)?.toString()
-                                            if (!text.isNullOrBlank()) {
-                                                textContent = if (textContent.isBlank()) text else "$textContent\n$text"
-                                                Toast.makeText(context, "Pasted from clipboard", Toast.LENGTH_SHORT).show()
-                                            } else {
-                                                Toast.makeText(context, "Clipboard has no text", Toast.LENGTH_SHORT).show()
-                                            }
-                                        } else {
-                                            Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
-                                        }
-                                    } catch (_: Exception) {
-                                        Toast.makeText(context, "Could not read clipboard", Toast.LENGTH_SHORT).show()
+                        HorizontalDivider(
+                            thickness = 0.8.dp,
+                            color = cardBorderColor.copy(alpha = 0.75f)
+                        )
+
+                        // Dynamic Content-Aware Body Editor Area (expands naturally with content up to maxEditorHeight, then scrolls internally)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .wrapContentHeight()
+                                .background(
+                                    color = if (isCodeCategory) {
+                                        if (isDark) Color(0xFF152033) else Color(0xFFF3F6FA)
+                                    } else {
+                                        Color.Transparent
+                                    },
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .padding(
+                                    horizontal = if (isCodeCategory) 8.dp else 2.dp,
+                                    vertical = if (isCodeCategory) 6.dp else 2.dp
+                                )
+                        ) {
+                            BasicTextField(
+                                value = textContent,
+                                onValueChange = { textContent = it },
+                                minLines = 4,
+                                keyboardOptions = KeyboardOptions(
+                                    capitalization = if (isCodeCategory || isLinkCategory) {
+                                        KeyboardCapitalization.None
+                                    } else {
+                                        KeyboardCapitalization.Sentences
+                                    },
+                                    imeAction = ImeAction.Default
+                                ),
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                    fontFamily = if (isCodeCategory) FontFamily.Monospace else FontFamily.Default,
+                                    fontSize = if (isCodeCategory) 13.sp else 14.sp,
+                                    lineHeight = 20.sp,
+                                    color = if (isCodeCategory) {
+                                        if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B)
+                                    } else {
+                                        navyTextColor
                                     }
-                                },
-                                shape = RoundedCornerShape(50),
-                                color = pillUnselectedBg,
-                                modifier = Modifier.height(26.dp)
+                                ),
+                                cursorBrush = SolidColor(pillSelectedBg),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = minEditorHeight, max = maxEditorHeight)
+                                    .focusRequester(contentFocusRequester)
+                                    .onFocusChanged { isContentFocused = it.isFocused }
+                                    .testTag("add_clip_content_input"),
+                                decorationBox = { innerTextField ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .defaultMinSize(minHeight = minEditorHeight),
+                                        contentAlignment = Alignment.TopStart
+                                    ) {
+                                        if (textContent.isEmpty()) {
+                                            Text(
+                                                text = if (isCodeCategory) {
+                                                    "Paste or type code snippet here..."
+                                                } else if (isLinkCategory) {
+                                                    "Paste website URL or link notes here..."
+                                                } else {
+                                                    "Paste or type your note details here..."
+                                                },
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontFamily = if (isCodeCategory) FontFamily.Monospace else FontFamily.Default,
+                                                    fontSize = 13.5.sp,
+                                                    lineHeight = 20.sp
+                                                ),
+                                                color = bodyTextColor.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                }
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "$lineCount ${if (lineCount == 1) "line" else "lines"}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                color = timestampColor
+                            )
+                        }
+
+                        HorizontalDivider(
+                            thickness = 0.8.dp,
+                            color = cardBorderColor.copy(alpha = 0.75f)
+                        )
+
+                        // Action Buttons Directly Below Content Textbox (Light Red Cancel + Royal Blue Save Note)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Light Red Compact Cancel Button
+                            Surface(
+                                onClick = onBack,
+                                shape = RoundedCornerShape(8.dp),
+                                color = cancelBtnBg,
+                                border = BorderStroke(1.dp, cancelBtnBorder),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
+                                    .testTag("cancel_add_button")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 9.dp),
+                                    modifier = Modifier.fillMaxSize(),
+                                    horizontalArrangement = Arrangement.Center,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Outlined.ContentPaste,
-                                        contentDescription = "Paste",
-                                        tint = pillSelectedBg,
-                                        modifier = Modifier.size(12.dp)
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = null,
+                                        tint = cancelBtnText,
+                                        modifier = Modifier.size(13.dp)
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = "Paste",
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold
+                                        text = "Cancel",
+                                        style = MaterialTheme.typography.labelMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
                                         ),
-                                        color = pillSelectedBg
+                                        color = cancelBtnText
                                     )
                                 }
                             }
-                        }
-                    }
 
-                    // 100% Full-Width Body Content Editor Area
-                    val editorBoxBg = when {
-                        isCodeCategory -> if (isDark) Color(0xFF1E293B) else Color(0xFFEEF2F6)
-                        else -> if (isDark) Color(0xFF0F172A) else Color(0xFFF8FAFC)
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(10.dp),
-                        color = editorBoxBg,
-                        border = BorderStroke(
-                            width = 1.dp,
-                            color = if (isContentFocused) pillSelectedBg.copy(alpha = 0.55f) else cardBorderColor
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .wrapContentHeight()
-                    ) {
-                        BasicTextField(
-                            value = textContent,
-                            onValueChange = { textContent = it },
-                            minLines = 6,
-                            maxLines = 11,
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                fontFamily = if (isCodeCategory) FontFamily.Monospace else FontFamily.Default,
-                                fontSize = if (isCodeCategory) 12.5.sp else 13.5.sp,
-                                lineHeight = 19.sp,
-                                color = if (isCodeCategory) {
-                                    if (isDark) Color(0xFFE2E8F0) else Color(0xFF1E293B)
-                                } else {
-                                    navyTextColor
-                                }
-                            ),
-                            cursorBrush = SolidColor(pillSelectedBg),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 10.dp)
-                                .onFocusChanged { isContentFocused = it.isFocused }
-                                .testTag("add_clip_content_input"),
-                            decorationBox = { innerTextField ->
-                                Box(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    contentAlignment = Alignment.TopStart
-                                ) {
-                                    if (textContent.isEmpty()) {
-                                        Text(
-                                            text = if (isCodeCategory) {
-                                                "Paste or type code snippet here..."
-                                            } else if (isLinkCategory) {
-                                                "Paste website URL or link notes here..."
-                                            } else {
-                                                "Paste or type your note content here..."
-                                            },
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontFamily = if (isCodeCategory) FontFamily.Monospace else FontFamily.Default,
-                                                fontSize = 13.sp,
-                                                lineHeight = 19.sp
-                                            ),
-                                            color = bodyTextColor.copy(alpha = 0.65f)
-                                        )
-                                    }
-                                    innerTextField()
-                                }
-                            }
-                        )
-                    }
-
-                    // Professional Full-Width Footer Action Buttons Row (Light Red Cancel + Royal Blue Save)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Light Red Professional Cancel Button
-                        Surface(
-                            onClick = onBack,
-                            shape = RoundedCornerShape(10.dp),
-                            color = cancelBtnBg,
-                            border = BorderStroke(1.dp, cancelBtnBorder),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(38.dp)
-                                .testTag("cancel_add_button")
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxSize(),
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
+                            // Royal Blue Compact Save Note Button
+                            Button(
+                                onClick = saveNoteAction,
+                                enabled = textContent.isNotBlank(),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = pillSelectedBg,
+                                    contentColor = Color.White,
+                                    disabledContainerColor = pillUnselectedBg,
+                                    disabledContentColor = pillUnselectedText.copy(alpha = 0.5f)
+                                ),
+                                elevation = ButtonDefaults.buttonElevation(
+                                    defaultElevation = 1.dp,
+                                    pressedElevation = 3.dp,
+                                    disabledElevation = 0.dp
+                                ),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                                modifier = Modifier
+                                    .weight(1.25f)
+                                    .height(34.dp)
+                                    .testTag("save_new_clip_button")
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Close,
+                                    imageVector = Icons.Default.Check,
                                     contentDescription = null,
-                                    tint = cancelBtnText,
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
-                                Spacer(modifier = Modifier.width(5.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "Cancel",
-                                    style = MaterialTheme.typography.labelLarge.copy(
+                                    text = "Save Note",
+                                    style = MaterialTheme.typography.labelMedium.copy(
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    ),
-                                    color = cancelBtnText
+                                        fontSize = 12.sp
+                                    )
                                 )
                             }
-                        }
-
-                        // Royal Blue Professional Save Changes / Save Note Button
-                        Button(
-                            onClick = saveNoteAction,
-                            enabled = textContent.isNotBlank(),
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = pillSelectedBg,
-                                contentColor = Color.White,
-                                disabledContainerColor = pillUnselectedBg,
-                                disabledContentColor = pillUnselectedText.copy(alpha = 0.5f)
-                            ),
-                            elevation = ButtonDefaults.buttonElevation(
-                                defaultElevation = 2.dp,
-                                pressedElevation = 4.dp,
-                                disabledElevation = 0.dp
-                            ),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-                            modifier = Modifier
-                                .weight(1.35f)
-                                .height(38.dp)
-                                .testTag("save_new_clip_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Save Note",
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                            )
                         }
                     }
                 }

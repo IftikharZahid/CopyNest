@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -19,6 +20,12 @@ class UserPreferences(private val context: Context) {
         val PENDING_MANDATORY_UPDATE_VERSION = intPreferencesKey("pending_mandatory_update_version")
         val MIN_SUPPORTED_VERSION_CODE = intPreferencesKey("min_supported_version_code")
         val HAS_SEEDED_DEFAULT_CLIPS = booleanPreferencesKey("has_seeded_default_clips")
+
+        val DRIVE_SYNC_ENABLED = booleanPreferencesKey("drive_sync_enabled")
+        val DRIVE_ACCOUNT_EMAIL = stringPreferencesKey("drive_account_email")
+        val DRIVE_FOLDER_ID = stringPreferencesKey("drive_folder_id")
+        val DRIVE_LAST_SYNC_TIME = longPreferencesKey("drive_last_sync_time")
+        val DRIVE_LAST_SYNC_SUMMARY = stringPreferencesKey("drive_last_sync_summary")
     }
 
     val autoCaptureFlow: Flow<Boolean> = context.dataStore.data
@@ -39,6 +46,31 @@ class UserPreferences(private val context: Context) {
     val minSupportedVersionCodeFlow: Flow<Int> = context.dataStore.data
         .map { preferences ->
             preferences[MIN_SUPPORTED_VERSION_CODE] ?: 0
+        }
+
+    val driveSyncEnabledFlow: Flow<Boolean> = context.dataStore.data
+        .map { preferences ->
+            preferences[DRIVE_SYNC_ENABLED] ?: false
+        }
+
+    val driveAccountEmailFlow: Flow<String> = context.dataStore.data
+        .map { preferences ->
+            preferences[DRIVE_ACCOUNT_EMAIL] ?: ""
+        }
+
+    val driveFolderIdFlow: Flow<String> = context.dataStore.data
+        .map { preferences ->
+            preferences[DRIVE_FOLDER_ID] ?: ""
+        }
+
+    val driveLastSyncTimeFlow: Flow<Long> = context.dataStore.data
+        .map { preferences ->
+            preferences[DRIVE_LAST_SYNC_TIME] ?: 0L
+        }
+
+    val driveLastSyncSummaryFlow: Flow<String> = context.dataStore.data
+        .map { preferences ->
+            preferences[DRIVE_LAST_SYNC_SUMMARY] ?: ""
         }
 
     suspend fun hasSeededDefaultClips(): Boolean {
@@ -94,5 +126,54 @@ class UserPreferences(private val context: Context) {
             preferences[MIN_SUPPORTED_VERSION_CODE] = versionCode
         }
     }
-}
 
+    suspend fun isDriveSyncEnabled(): Boolean {
+        return try {
+            driveSyncEnabledFlow.first()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    suspend fun setDriveSyncConnection(enabled: Boolean, accountEmail: String, folderId: String = "") {
+        context.dataStore.edit { preferences ->
+            preferences[DRIVE_SYNC_ENABLED] = enabled
+            preferences[DRIVE_ACCOUNT_EMAIL] = accountEmail
+            if (folderId.isNotBlank() || !enabled) {
+                preferences[DRIVE_FOLDER_ID] = folderId
+            }
+            if (!enabled) {
+                preferences[DRIVE_LAST_SYNC_SUMMARY] = "Disconnected"
+            }
+        }
+    }
+
+    suspend fun getDriveAccountEmail(): String {
+        return try {
+            driveAccountEmailFlow.first()
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    suspend fun getDriveFolderId(): String {
+        return try {
+            driveFolderIdFlow.first()
+        } catch (_: Exception) {
+            ""
+        }
+    }
+
+    suspend fun setDriveFolderId(folderId: String) {
+        context.dataStore.edit { preferences ->
+            preferences[DRIVE_FOLDER_ID] = folderId
+        }
+    }
+
+    suspend fun updateDriveLastSync(timestamp: Long, summary: String) {
+        context.dataStore.edit { preferences ->
+            preferences[DRIVE_LAST_SYNC_TIME] = timestamp
+            preferences[DRIVE_LAST_SYNC_SUMMARY] = summary
+        }
+    }
+}

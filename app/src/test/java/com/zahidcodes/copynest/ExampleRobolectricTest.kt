@@ -455,5 +455,234 @@ class ExampleRobolectricTest {
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("edit_category_chip_study").assertIsDisplayed()
     }
+
+    @Test
+    fun `two-way Google Drive sync creates or reuses Copy Nest folder, syncs existing and new clips both ways without duplicates, and handles deletions and network issues`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = ClipDatabase.getDatabase(context)
+        val prefs = com.zahidcodes.copynest.data.UserPreferences(context)
+        runBlocking {
+            db.clipDao().deleteAllClips()
+            db.clipDao().deleteAllDeletedClips()
+            prefs.setDriveSyncConnection(enabled = false, accountEmail = "", folderId = "")
+        }
+
+        // Fake in-memory Google Drive backend to verify folder creation, uploads, downloads, deduplication, and deletions
+        var isOnline = true
+        val remoteFolders = mutableMapOf<String, String>() // id -> name
+        val remoteFiles = mutableMapOf<String, Pair<com.zahidcodes.copynest.data.DriveRemoteFile, String>>() // id -> (metadata, content)
+        var nextId = 100
+
+        // Seed an existing text file in Google Drive inside the "Copy Nest" folder before connecting
+        val existingFolderId = "folder_copynest_1"
+        remoteFolders[existingFolderId] = com.zahidcodes.copynest.data.DriveSyncManager.COPY_NEST_FOLDER_NAME
+        val preExistingDriveText = "Remote study note from Google Drive https://developer.android.com"
+        val preExistingRemoteFile = com.zahidcodes.copynest.data.DriveRemoteFile(
+            id = "drive_file_1",
+            name = "Remote_Note.txt",
+            mimeType = "text/plain",
+            modifiedTime = System.currentTimeMillis() - 10_000L,
+            appProperties = emptyMap()
+        )
+        remoteFiles[preExistingRemoteFile.id] = preExistingRemoteFile to preExistingDriveText
+
+        val fakeDriveApiClient = object : com.zahidcodes.copynest.data.DriveApiClient {
+            override suspend fun isFolderValid(accessToken: String, folderId: String): Boolean {
+                return remoteFolders.containsKey(folderId)
+            }
+
+            override suspend fun findFolderByName(accessToken: String, folderName: String): String? {
+                return remoteFolders.entries.firstOrNull { it.value == folderName }?.key
+            }
+
+            override suspend fun createFolder(accessToken: String, folderName: String): String {
+                val id = "folder_${++nextId}"
+                remoteFolders[id] = folderName
+                return id
+            }
+
+            override suspend fun listFilesInFolder(
+                accessToken: String,
+                folderId: String
+            ): List<com.zahidcodes.copynest.data.DriveRemoteFile> {
+                return remoteFiles.values.map { it.first }
+            }
+
+            override suspend fun downloadFileText(
+                accessToken: String,
+                file: com.zahidcodes.copynest.data.DriveRemoteFile
+            ): String {
+                return remoteFiles[file.id]?.second ?: ""
+            }
+
+            override suspend fun uploadTextFile(
+                accessToken: String,
+                folderId: String,
+                fileName: String,
+                content: String,
+                appProperties: Map<String, String>
+            ): com.zahidcodes.copynest.data.DriveRemoteFile {
+                val id = "drive_file_${++nextId}"
+                val file = com.zahidcodes.copynest.data.DriveRemoteFile(
+                    id = id,
+                    name = fileName,
+                    mimeType = "text/plain",
+                    modifiedTime = System.currentTimeMillis(),
+                    appProperties = appProperties
+                )
+                remoteFiles[id] = file to content
+                return file
+            }
+
+            override suspend fun updateTextFile(
+                accessToken: String,
+                fileId: String,
+                fileName: String,
+                content: String,
+                appProperties: Map<String, String>
+            ): com.zahidcodes.copynest.data.DriveRemoteFile {
+                val file = com.zahidcodes.copynest.data.DriveRemoteFile(
+                    id = fileId,
+                    name = fileName,
+                    mimeType = "text/plain",
+                    modifiedTime = System.currentTimeMillis(),
+                    appProperties = appProperties
+                )
+                remoteFiles[fileId] = file to content
+                return file
+            }
+
+            override suspend fun deleteFile(accessToken: String, fileId: String) {
+                remoteFiles.remove(fileId)
+            }
+        }
+
+        val repository = com.zahidcodes.copynest.data.ClipRepository(db.clipDao())
+        val driveSyncManager = com.zahidcodes.copynest.data.DriveSyncManager(
+            context = context,
+            repository = repository,
+            userPreferences = prefs,
+            driveApiClient = fakeDriveApiClient,
+            networkChecker = { isOnline },
+            tokenProvider = { "valid_oauth_access_token" }
+        )
+
+        val viewModel = ClipboardViewModel(
+            context = context,
+            seedDefaultClipsIfFirstLaunch = false,
+            customDriveSyncManager = driveSyncManager
+        )
+
+        // 1. Before connecting Google Drive, local clipboard items are saved locally ONLY and NOT uploaded
+        viewModel.saveManualClip(title = "Local Note", text = "Local clipboard note before Drive connection")
+        for (i in 0 until 5) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(40)
+        }
+        assertEquals("Before connecting Drive, remote files should remain 1", 1, remoteFiles.size)
+
+        // 2. Verify Settings Screen renders "Sync with Google Drive" card and asks user to connect before uploading
+        composeTestRule.setContent {
+            CopyNestTheme(themeMode = "LIGHT") {
+                com.zahidcodes.copynest.ui.SettingsScreen(
+                    viewModel = viewModel,
+                    onBack = {}
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("sync_with_google_drive_card").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("sync_with_google_drive_title").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("drive_connect_prompt_text").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("sync_with_google_drive_button").assertIsDisplayed()
+
+        // Tap "Sync with Google Drive" button -> shows confirmation dialog asking to connect Google Drive
+        composeTestRule.onNodeWithTag("sync_with_google_drive_button").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("connect_drive_confirm_dialog").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("cancel_connect_drive_button").performClick()
+        composeTestRule.waitForIdle()
+
+        // 3. Connect Google Drive and run initial two-way sync:
+        //    - Reuses "Copy Nest" folder
+        //    - Downloads pre-existing Drive text file into local DB
+        //    - Uploads missing local record to Drive
+        viewModel.onGoogleDriveConnected(
+            accountEmail = "xahidcodes@gmail.com",
+            accessToken = "valid_oauth_access_token"
+        )
+        for (i in 0 until 8) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        composeTestRule.waitForIdle()
+
+        assertEquals(existingFolderId, runBlocking { prefs.getDriveFolderId() })
+        val clipsAfterInitialSync = runBlocking { db.clipDao().getAllClipsList() }
+        assertEquals("Expected 2 clips in local DB (1 local + 1 downloaded from Drive)", 2, clipsAfterInitialSync.size)
+        assertTrue(clipsAfterInitialSync.any { it.text == preExistingDriveText })
+        assertTrue(clipsAfterInitialSync.any { it.text == "Local clipboard note before Drive connection" })
+        assertEquals("Expected 2 files in Drive folder after initial two-way sync", 2, remoteFiles.size)
+
+        // 4. Ongoing two-way sync: copying new text to clipboard automatically uploads to Drive without duplicates
+        val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val newCopiedText = "Automatically synced clipboard text 778899"
+        clipboardManager.setPrimaryClip(ClipData.newPlainText("clip", newCopiedText))
+        viewModel.checkClipboardAndSave(context)
+        for (i in 0 until 8) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        assertEquals("Expected new clipboard entry to be uploaded to Drive", 3, remoteFiles.size)
+        assertTrue(remoteFiles.values.any { it.second == newCopiedText })
+
+        // 5. Adding a new text file directly in Google Drive "Copy Nest" folder appears in the app without duplicates
+        val secondRemoteFile = com.zahidcodes.copynest.data.DriveRemoteFile(
+            id = "drive_file_external_99",
+            name = "External_Drive_File.txt",
+            mimeType = "text/plain",
+            modifiedTime = System.currentTimeMillis(),
+            appProperties = emptyMap()
+        )
+        remoteFiles[secondRemoteFile.id] = secondRemoteFile to "Added directly inside Google Drive folder"
+        viewModel.syncWithGoogleDrive(isManual = true)
+        for (i in 0 until 8) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        val clipsAfterRemoteAdd = runBlocking { db.clipDao().getAllClipsList() }
+        assertEquals("Expected 4 clips after syncing new Drive file", 4, clipsAfterRemoteAdd.size)
+        assertTrue(clipsAfterRemoteAdd.any { it.text == "Added directly inside Google Drive folder" })
+
+        // 6. Deleting a clip locally deletes it from Google Drive and does not resurrect it
+        val clipToDelete = clipsAfterRemoteAdd.first { it.text == newCopiedText }
+        viewModel.deleteClip(clipToDelete.id)
+        for (i in 0 until 8) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        assertEquals("Expected 3 local clips after deletion", 3, runBlocking { db.clipDao().getAllClipsList().size })
+        assertFalse("Expected deleted clip to be removed from Drive", remoteFiles.values.any { it.second == newCopiedText })
+
+        // 7. Network outage handling: copying while offline saves locally and syncs once back online
+        isOnline = false
+        viewModel.saveManualClip(title = "Offline Clip", text = "Saved while offline 445566")
+        for (i in 0 until 6) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        assertEquals("Offline clip must be saved in local DB", 4, runBlocking { db.clipDao().getAllClipsList().size })
+        assertEquals("Offline clip not yet in remote Drive while offline", 3, remoteFiles.size)
+
+        isOnline = true
+        viewModel.syncWithGoogleDrive(isManual = true)
+        for (i in 0 until 8) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        assertEquals("Once back online, offline clip is uploaded to Drive", 4, remoteFiles.size)
+        assertTrue(remoteFiles.values.any { it.second == "Saved while offline 445566" })
+    }
 }
+
 

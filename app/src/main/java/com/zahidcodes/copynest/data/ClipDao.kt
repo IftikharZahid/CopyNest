@@ -124,4 +124,29 @@ interface ClipDao {
 
     @Query("DELETE FROM deleted_clips")
     suspend fun deleteAllDeletedClips()
+
+    @Query("SELECT * FROM clips WHERE driveFileId = :driveFileId LIMIT 1")
+    suspend fun getClipByDriveFileId(driveFileId: String): ClipEntity?
+
+    @Query("SELECT * FROM deleted_clips WHERE syncedDeletionToDrive = 0")
+    suspend fun getUnsyncedDeletedClips(): List<DeletedClipEntity>
+
+    @Query("UPDATE deleted_clips SET syncedDeletionToDrive = 1 WHERE contentHash = :hash")
+    suspend fun markDeletedClipSynced(hash: String)
+
+    @Query(
+        """
+        UPDATE clips
+        SET driveFileId = :driveFileId,
+            syncState = :syncState,
+            updatedAt = :updatedAt
+        WHERE id = :clipId
+        """
+    )
+    suspend fun updateClipDriveSyncState(
+        clipId: Long,
+        driveFileId: String,
+        syncState: String,
+        updatedAt: Long
+    )
 }

@@ -89,4 +89,25 @@ class ClipRepository(private val clipDao: ClipDao) {
     suspend fun pruneOldDeletedClips(cutoffTime: Long) = clipDao.pruneOldDeletedClips(cutoffTime)
 
     suspend fun deleteAllDeletedClips() = clipDao.deleteAllDeletedClips()
+
+    suspend fun getClipByDriveFileId(driveFileId: String): ClipEntity? =
+        clipDao.getClipByDriveFileId(driveFileId)
+
+    suspend fun getUnsyncedDeletedClips(): List<DeletedClipEntity> =
+        clipDao.getUnsyncedDeletedClips()
+
+    suspend fun markDeletedClipSynced(hash: String) =
+        clipDao.markDeletedClipSynced(hash)
+
+    suspend fun updateClipDriveSyncState(
+        clipId: Long,
+        driveFileId: String,
+        syncState: String,
+        updatedAt: Long = System.currentTimeMillis()
+    ) = clipDao.updateClipDriveSyncState(
+        clipId = clipId,
+        driveFileId = driveFileId,
+        syncState = syncState,
+        updatedAt = updatedAt
+    )
 }

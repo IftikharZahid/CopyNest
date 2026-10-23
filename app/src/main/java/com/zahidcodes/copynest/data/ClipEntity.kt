@@ -19,7 +19,10 @@ data class ClipEntity(
     val linkTitle: String = "",
     val linkDescription: String = "",
     val linkFaviconBase64: String = "",
-    val linkMetadataLoaded: Boolean = false
+    val linkMetadataLoaded: Boolean = false,
+    val driveFileId: String = "",
+    val syncState: String = "PENDING_UPLOAD",
+    val updatedAt: Long = System.currentTimeMillis()
 )
 
 @Entity(tableName = "link_metadata_cache")

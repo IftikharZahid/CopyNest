@@ -1,5 +1,6 @@
 package com.zahidcodes.copynest.ui
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -7,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -41,9 +43,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.common.api.ApiException
 import com.zahidcodes.copynest.BuildConfig
 import com.zahidcodes.copynest.R
+import com.zahidcodes.copynest.data.DriveSyncManager
+import com.zahidcodes.copynest.data.DriveSyncStatus
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,11 +66,109 @@ fun SettingsScreen(
     val coroutineScope = rememberCoroutineScope()
     val autoCapture by viewModel.autoCapture.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
+    val driveSyncEnabled by viewModel.driveSyncEnabled.collectAsState()
+    val driveAccountEmail by viewModel.driveAccountEmail.collectAsState()
+    val driveLastSyncTime by viewModel.driveLastSyncTime.collectAsState()
+    val driveLastSyncSummary by viewModel.driveLastSyncSummary.collectAsState()
+    val driveSyncStatus by viewModel.driveSyncStatus.collectAsState()
     val isSystemDark = isSystemInDarkTheme()
 
     var showClearConfirm by remember { mutableStateOf(false) }
     var clearConfirmInput by remember { mutableStateOf("") }
     var showAppInfoPopup by remember { mutableStateOf(false) }
+    var showConnectDrivePrompt by remember { mutableStateOf(false) }
+    var pendingAuthEmail by remember { mutableStateOf("") }
+
+    // Launcher for Google Identity Services Drive Scope Authorization resolution
+    val driveAuthIntentSenderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        try {
+            val authResult = Identity.getAuthorizationClient(context)
+                .getAuthorizationResultFromIntent(result.data)
+            val accessToken = authResult.accessToken
+            val email = pendingAuthEmail.ifBlank {
+                GoogleSignIn.getLastSignedInAccount(context)?.email.orEmpty()
+            }
+            if (!accessToken.isNullOrBlank() || result.resultCode == Activity.RESULT_OK) {
+                viewModel.onGoogleDriveConnected(
+                    accountEmail = email.ifBlank { "Google Drive Account" },
+                    accessToken = accessToken
+                ) { _, summary ->
+                    Toast.makeText(context, summary, Toast.LENGTH_SHORT).show()
+                }
+            } else {
+                Toast.makeText(context, "Google Drive authorization was cancelled", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, "Drive authorization error: ${e.localizedMessage ?: "Failed"}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Launcher for UserRecoverableAuthException consent intent
+    val recoverableConsentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            viewModel.syncWithGoogleDrive(isManual = true) { _, summary ->
+                Toast.makeText(context, summary, Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "Google Drive permission was not granted", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Launcher for real Google Sign-In + Drive scopes flow
+    val googleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        coroutineScope.launch {
+            try {
+                val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                val account = task.getResult(ApiException::class.java)
+                val email = account?.email.orEmpty()
+                pendingAuthEmail = email
+
+                // Request Drive OAuth token via Google Identity Services AuthorizationClient
+                try {
+                    val authRequest = viewModel.driveSyncManager.buildAuthorizationRequest(email)
+                    val authResult = Identity.getAuthorizationClient(context)
+                        .authorize(authRequest)
+                        .await()
+                    if (authResult.hasResolution() && authResult.pendingIntent != null) {
+                        driveAuthIntentSenderLauncher.launch(
+                            IntentSenderRequest.Builder(authResult.pendingIntent!!).build()
+                        )
+                    } else {
+                        viewModel.onGoogleDriveConnected(
+                            accountEmail = email.ifBlank { account?.displayName ?: "Google Drive" },
+                            accessToken = authResult.accessToken
+                        ) { _, summary ->
+                            Toast.makeText(context, summary, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Proceed with GoogleSignInAccount + GoogleAuthUtil token exchange
+                    viewModel.onGoogleDriveConnected(
+                        accountEmail = email.ifBlank { account?.displayName ?: "Google Drive" },
+                        accessToken = null
+                    ) { _, summary ->
+                        Toast.makeText(context, summary, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: ApiException) {
+                val message = when (e.statusCode) {
+                    12501 -> "Google Sign-In cancelled"
+                    10 -> "Google Cloud OAuth client setup required (Developer Error 10: verify SHA-1 & package name in Google Cloud Console)"
+                    7 -> "Network error while connecting to Google Drive"
+                    else -> "Google Sign-In failed (code ${e.statusCode})"
+                }
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Could not complete Google Sign-In: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("text/plain")
@@ -208,6 +317,271 @@ fun SettingsScreen(
                                 .height(26.dp)
                                 .testTag("auto_capture_switch")
                         )
+                    }
+                }
+            }
+
+            // Sync with Google Drive Card (App Design System)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("sync_with_google_drive_card"),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(modifier = Modifier.padding(11.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.CloudSync,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Text(
+                                text = "Sync with Google Drive",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp
+                                ),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.testTag("sync_with_google_drive_title")
+                            )
+                        }
+
+                        val isSyncing = driveSyncStatus is DriveSyncStatus.Syncing
+                        val isError = driveSyncStatus is DriveSyncStatus.Error || driveSyncStatus is DriveSyncStatus.NeedsConsent
+                        val statusBg = when {
+                            !driveSyncEnabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+                            isSyncing -> MaterialTheme.colorScheme.primaryContainer
+                            isError -> Color(0xFFFEE2E2)
+                            else -> Color(0xFFDCFCE7)
+                        }
+                        val statusTextColor = when {
+                            !driveSyncEnabled -> MaterialTheme.colorScheme.onSurfaceVariant
+                            isSyncing -> MaterialTheme.colorScheme.onPrimaryContainer
+                            isError -> Color(0xFFB91C1C)
+                            else -> Color(0xFF15803D)
+                        }
+                        val statusLabel = when {
+                            !driveSyncEnabled -> "Not Connected"
+                            isSyncing -> "Syncing..."
+                            isError -> "Attention"
+                            else -> "Connected"
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = statusBg,
+                            modifier = Modifier.testTag("drive_sync_status_badge")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                if (isSyncing) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(9.dp),
+                                        strokeWidth = 1.5.dp,
+                                        color = statusTextColor
+                                    )
+                                }
+                                Text(
+                                    text = statusLabel,
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = statusTextColor
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    if (!driveSyncEnabled) {
+                        Text(
+                            text = "Please connect your Google Drive account before uploading clipboard contents. Copy Nest will create or reuse the \"${DriveSyncManager.COPY_NEST_FOLDER_NAME}\" folder for two-way sync.",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.sp,
+                                lineHeight = 14.5.sp
+                            ),
+                            color = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.testTag("drive_connect_prompt_text")
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = { showConnectDrivePrompt = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(36.dp)
+                                .testTag("sync_with_google_drive_button"),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.AddToDrive,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Sync with Google Drive",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            )
+                        }
+                    } else {
+                        // Connected state details
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = BorderStroke(0.6.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = driveAccountEmail.ifBlank { "Google Account Connected" },
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("drive_connected_email_text")
+                                    )
+                                    Text(
+                                        text = "Folder: ${DriveSyncManager.COPY_NEST_FOLDER_NAME}",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Medium
+                                        ),
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+
+                                val statusDescription = when (val st = driveSyncStatus) {
+                                    is DriveSyncStatus.Syncing -> st.message
+                                    is DriveSyncStatus.Error -> st.errorMessage
+                                    is DriveSyncStatus.NeedsConsent -> st.message
+                                    else -> {
+                                        val summary = driveLastSyncSummary.ifBlank { "Two-way sync active" }
+                                        if (driveLastSyncTime > 0L) {
+                                            val formattedTime = remember(driveLastSyncTime) {
+                                                SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
+                                                    .format(Date(driveLastSyncTime))
+                                            }
+                                            "$summary • $formattedTime"
+                                        } else {
+                                            summary
+                                        }
+                                    }
+                                }
+
+                                Text(
+                                    text = statusDescription,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 10.5.sp,
+                                        lineHeight = 13.5.sp
+                                    ),
+                                    color = if (driveSyncStatus is DriveSyncStatus.Error) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    modifier = Modifier.testTag("drive_sync_summary_text")
+                                )
+                            }
+                        }
+
+                        if (driveSyncStatus is DriveSyncStatus.NeedsConsent) {
+                            val consentIntent = (driveSyncStatus as DriveSyncStatus.NeedsConsent).consentIntent
+                            if (consentIntent != null) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Button(
+                                    onClick = { recoverableConsentLauncher.launch(consentIntent) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(34.dp)
+                                        .testTag("drive_grant_permission_button"),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Outlined.VerifiedUser, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Approve Google Drive Access", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    viewModel.syncWithGoogleDrive(isManual = true) { _, message ->
+                                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                enabled = driveSyncStatus !is DriveSyncStatus.Syncing,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
+                                    .testTag("drive_sync_now_button"),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                            ) {
+                                Icon(Icons.Outlined.Sync, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Sync Now", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    viewModel.disconnectGoogleDrive {
+                                        Toast.makeText(context, "Disconnected from Google Drive", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(34.dp)
+                                    .testTag("drive_disconnect_button"),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error
+                                )
+                            ) {
+                                Icon(Icons.Outlined.LinkOff, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Disconnect", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
+                            }
+                        }
                     }
                 }
             }
@@ -396,7 +770,7 @@ fun SettingsScreen(
                     )
                     Column {
                         Text(
-                            text = "100% Private & Local",
+                            text = if (driveSyncEnabled) "Local DB + Private Google Drive Sync" else "100% Private & Local",
                             style = MaterialTheme.typography.titleSmall.copy(
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -404,7 +778,11 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "All clips are stored locally on your device in a secure database.",
+                            text = if (driveSyncEnabled) {
+                                "Clips are saved in your local database and synced only with your own Google Drive 'Copy Nest' folder."
+                            } else {
+                                "All clips are stored locally on your device. Clipboard contents are never uploaded unless you connect Google Drive."
+                            },
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontSize = 10.5.sp,
                                 lineHeight = 14.sp
@@ -579,7 +957,7 @@ fun SettingsScreen(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    // Connect Links (Ultra-compact 26.dp height pill buttons with minimal padding)
+                    // Connect Links
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -740,6 +1118,70 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    // Consent Dialog asking the user clearly to connect Google Drive before uploading clipboard contents
+    if (showConnectDrivePrompt) {
+        AlertDialog(
+            onDismissRequest = { showConnectDrivePrompt = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Outlined.AddToDrive,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text(
+                    text = "Connect Google Drive?",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = "Connect your Google Drive account to enable two-way clipboard synchronization:",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
+                    )
+                    Text(
+                        text = "• Reuses or creates the \"${DriveSyncManager.COPY_NEST_FOLDER_NAME}\" folder in your Google Drive.\n" +
+                            "• Downloads existing text files from \"${DriveSyncManager.COPY_NEST_FOLDER_NAME}\" into Copy Nest.\n" +
+                            "• Uploads your local clipboard records as .txt files and keeps both sides synchronized without duplicates.",
+                        style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showConnectDrivePrompt = false
+                        try {
+                            val signInIntent = viewModel.driveSyncManager.getGoogleSignInClient().signInIntent
+                            googleSignInLauncher.launch(signInIntent)
+                        } catch (e: Exception) {
+                            Toast.makeText(
+                                context,
+                                "Unable to launch Google Sign-In: ${e.localizedMessage}",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier.testTag("confirm_connect_drive_button")
+                ) {
+                    Text("Connect Google Drive")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showConnectDrivePrompt = false },
+                    modifier = Modifier.testTag("cancel_connect_drive_button")
+                ) {
+                    Text("Not Now")
+                }
+            },
+            modifier = Modifier.testTag("connect_drive_confirm_dialog")
+        )
     }
 
     if (showAppInfoPopup) {
@@ -936,18 +1378,18 @@ private fun AppInfoTermsPopup(
                     )
                     TermsSectionItem(
                         icon = Icons.Outlined.Lock,
-                        title = "2. 100% Local Storage & Privacy",
-                        description = "All saved clipboard records, custom titles, categories, and pinned items are stored exclusively on your device. CopyNest never uploads or sells your clipboard data to external servers."
+                        title = "2. Local Storage & Optional Google Drive Sync",
+                        description = "All saved clipboard records are stored locally on your device. If you enable Sync with Google Drive, your notes are synced exclusively with the 'Copy Nest' folder in your personal Google Drive."
                     )
                     TermsSectionItem(
                         icon = Icons.Outlined.Language,
                         title = "3. Link Previews & Network Access",
-                        description = "Internet access is used solely on demand to fetch public webpage titles, descriptions, and favicons when a saved record contains a URL, or when you open links."
+                        description = "Internet access is used on demand to fetch public webpage titles/favicons for URLs and, when enabled by you, to synchronize notes with your Google Drive."
                     )
                     TermsSectionItem(
                         icon = Icons.Outlined.Backup,
                         title = "4. Data Ownership & Backups",
-                        description = "You retain full ownership of your notes. Since records are stored locally on your device, please use Export Notes regularly to back up important clips before uninstalling or clearing storage."
+                        description = "You retain full ownership of your notes. You can back up notes at any time using Sync with Google Drive or Export Notes."
                     )
                     TermsSectionItem(
                         icon = Icons.Outlined.Shield,

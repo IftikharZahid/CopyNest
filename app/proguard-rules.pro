@@ -98,3 +98,11 @@
 -keepclassmembernames class kotlinx.** {
     volatile <fields>;
 }
+
+# -----------------------------------------------------------------------------
+# Google Play Services Auth & Drive Sync
+# -----------------------------------------------------------------------------
+-keep class com.google.android.gms.auth.** { *; }
+-keep class com.google.android.gms.common.** { *; }
+-dontwarn com.google.android.gms.**
+

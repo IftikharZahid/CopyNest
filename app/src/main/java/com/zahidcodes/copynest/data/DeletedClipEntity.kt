@@ -9,5 +9,7 @@ data class DeletedClipEntity(
     val contentHash: String,
     val normalizedText: String = "",
     val deletedAt: Long = System.currentTimeMillis(),
-    val clipboardTimestamp: Long = 0L
+    val clipboardTimestamp: Long = 0L,
+    val driveFileId: String = "",
+    val syncedDeletionToDrive: Boolean = false
 )
