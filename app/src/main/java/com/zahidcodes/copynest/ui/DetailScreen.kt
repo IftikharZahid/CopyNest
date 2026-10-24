@@ -172,8 +172,15 @@ fun DetailScreen(
         if (editedText.isEmpty()) 1 else editedText.count { it == '\n' } + 1
     }
 
+    var isSaving by remember { mutableStateOf(false) }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
     val saveChangesAction = {
-        if (editedText.isNotBlank()) {
+        if (!isSaving && editedText.isNotBlank()) {
+            isSaving = true
+            focusManager.clearFocus()
+            keyboardController?.hide()
             viewModel.updateClip(clip, editedTitle, editedText, editedCategory)
             Toast.makeText(context, "Note updated successfully", Toast.LENGTH_SHORT).show()
             onBack()

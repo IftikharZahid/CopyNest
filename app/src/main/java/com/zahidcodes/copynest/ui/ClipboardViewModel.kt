@@ -171,56 +171,23 @@ class ClipboardViewModel(
                         repository.pruneOldDeletedClips(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000L)
                     } catch (_: Exception) {}
 
-                    // Seed initial sample clips on very first app launch if database is empty
+                    // Remove any legacy pre-added template notes so the app starts clean without template notes
+                    val legacyTemplates = setOf(
+                        "Study Notes" to "Important concepts to review\nbefore the exam.",
+                        "Website Link" to "https://example.com",
+                        "Meeting Points" to "• Project discussion\n• UI/UX design\n• Performance improvement",
+                        "Code Snippet" to "const copyText = async () => {\n  await Clipboard.setString(text);\n};"
+                    )
                     var all = repository.getAllClipsList()
-                    if (seedDefaultClipsIfFirstLaunch && all.isEmpty() && !userPreferences.hasSeededDefaultClips()) {
-                        val now = System.currentTimeMillis()
-                        val defaultClips = listOf(
-                            ClipEntity(
-                                title = "Study Notes",
-                                text = "Important concepts to review\nbefore the exam.",
-                                timestamp = now - 5L * 60_000L,
-                                isPinned = true,
-                                contentType = "TEXT",
-                                category = "Study"
-                            ),
-                            ClipEntity(
-                                title = "Website Link",
-                                text = "https://example.com",
-                                timestamp = now - 25L * 60_000L,
-                                isPinned = false,
-                                contentType = "URL",
-                                category = "Links",
-                                linkUrl = "https://example.com",
-                                linkDomain = "example.com",
-                                linkSiteName = "Example",
-                                linkTitle = "Website Link",
-                                linkDescription = "Example Domain for illustrative documentation",
-                                linkMetadataLoaded = true
-                            ),
-                            ClipEntity(
-                                title = "Meeting Points",
-                                text = "• Project discussion\n• UI/UX design\n• Performance improvement",
-                                timestamp = now - 60L * 60_000L,
-                                isPinned = false,
-                                contentType = "TEXT",
-                                category = "Work"
-                            ),
-                            ClipEntity(
-                                title = "Code Snippet",
-                                text = "const copyText = async () => {\n  await Clipboard.setString(text);\n};",
-                                timestamp = now - 2L * 60L * 60_000L,
-                                isPinned = false,
-                                contentType = "CODE",
-                                category = "Code"
-                            )
-                        )
-                        repository.insertClips(defaultClips)
-                        userPreferences.setHasSeededDefaultClips(true)
-                        all = repository.getAllClipsList()
-                    } else if (all.isNotEmpty() && !userPreferences.hasSeededDefaultClips()) {
-                        userPreferences.setHasSeededDefaultClips(true)
+                    val retainedAfterTemplateCleanup = mutableListOf<ClipEntity>()
+                    for (item in all) {
+                        if ((item.title.trim() to item.text.trim()) in legacyTemplates) {
+                            repository.deleteClipById(item.id)
+                        } else {
+                            retainedAfterTemplateCleanup.add(item)
+                        }
                     }
+                    all = retainedAfterTemplateCleanup
 
                     // Clean up duplicate records and auto-assign category (Text, Links, Code) for existing records
                     val seenTexts = HashSet<String>()
@@ -625,121 +592,114 @@ class ClipboardViewModel(
         // Serialize all clipboard checks with a Mutex so concurrent lifecycle/listener triggers
         // never insert the same copied content multiple times.
         clipboardMutex.withLock {
-            val retryDelays = if (force) listOf(0L) else listOf(0L, 120L)
-            for (delayMs in retryDelays) {
-                if (delayMs > 0L) delay(delayMs)
-                val clipData = readCurrentClipboardData(context)
-                if (clipData != null && clipData.text.isNotEmpty()) {
-                    val text = clipData.text
-                    val clipTimestamp = clipData.timestamp
-                    val hash = computeContentFingerprint(text)
+            val clipData = readCurrentClipboardData(context)
+            if (clipData != null && clipData.text.isNotEmpty()) {
+                val text = clipData.text
+                val clipTimestamp = clipData.timestamp
+                val hash = computeContentFingerprint(text)
 
-                    // 1. Skip if internal copy by the app
-                    if (!force && text == lastInternalCopiedText) {
+                // 1. Skip if internal copy by the app
+                if (!force && text == lastInternalCopiedText) {
+                    return@withLock
+                }
+                if (text != lastInternalCopiedText) {
+                    lastInternalCopiedText = null
+                }
+
+                val deletedRecord = if (deletedHashesCache.contains(hash) || !initialDatabaseLoadComplete.isCompleted) {
+                    repository.getDeletedClip(hash)
+                } else {
+                    null
+                }
+
+                // 2. Skip if already processed in this session with same or older timestamp
+                // (unless this is a fresh listener copy event for a previously deleted item)
+                if (!force && text == lastProcessedClipText && !(isFromListener && deletedRecord != null)) {
+                    if (clipTimestamp <= 0L || clipTimestamp <= lastProcessedClipTimestamp) {
                         return@withLock
                     }
-                    if (text != lastInternalCopiedText) {
-                        lastInternalCopiedText = null
-                    }
+                }
 
-                    val deletedRecord = if (deletedHashesCache.contains(hash) || !initialDatabaseLoadComplete.isCompleted) {
-                        repository.getDeletedClip(hash)
-                    } else {
-                        null
-                    }
-
-                    // 2. Skip if already processed in this session with same or older timestamp
-                    // (unless this is a fresh listener copy event for a previously deleted item)
-                    if (!force && text == lastProcessedClipText && !(isFromListener && deletedRecord != null)) {
-                        if (clipTimestamp <= 0L || clipTimestamp <= lastProcessedClipTimestamp) {
-                            return@withLock
+                // 3. Persistent deletion check: ensure previously deleted entries are not resurrected
+                if (deletedRecord != null && !force) {
+                    val isLegitimateNewCopy = when {
+                        isFromListener -> {
+                            clipTimestamp <= 0L ||
+                                clipTimestamp >= deletedRecord.deletedAt ||
+                                (deletedRecord.clipboardTimestamp > 0L && clipTimestamp > deletedRecord.clipboardTimestamp)
+                        }
+                        clipTimestamp > 0L -> {
+                            val afterDeletion = clipTimestamp > deletedRecord.deletedAt
+                            val newerThanDeletedClipboard = deletedRecord.clipboardTimestamp > 0L &&
+                                clipTimestamp > deletedRecord.clipboardTimestamp
+                            afterDeletion || newerThanDeletedClipboard
+                        }
+                        else -> {
+                            false
                         }
                     }
 
-                    // 3. Persistent deletion check: ensure previously deleted entries are not resurrected
-                    if (deletedRecord != null && !force) {
-                        val isLegitimateNewCopy = when {
-                            isFromListener -> {
-                                clipTimestamp <= 0L ||
-                                    clipTimestamp >= deletedRecord.deletedAt ||
-                                    (deletedRecord.clipboardTimestamp > 0L && clipTimestamp > deletedRecord.clipboardTimestamp)
-                            }
-                            clipTimestamp > 0L -> {
-                                val afterDeletion = clipTimestamp > deletedRecord.deletedAt
-                                val newerThanDeletedClipboard = deletedRecord.clipboardTimestamp > 0L &&
-                                    clipTimestamp > deletedRecord.clipboardTimestamp
-                                afterDeletion || newerThanDeletedClipboard
-                            }
-                            else -> {
-                                false
-                            }
-                        }
-
-                        if (!isLegitimateNewCopy) {
-                            lastProcessedClipText = text
-                            lastProcessedClipTimestamp = clipTimestamp
-                            return@withLock
-                        } else {
-                            deletedHashesCache.remove(hash)
-                            repository.deleteDeletedClip(hash)
-                        }
-                    }
-
-                    // Clear stale clipboard tombstones that have already synced or had no remote Drive file
-                    if (deletedHashesCache.isNotEmpty()) {
-                        deletedHashesCache.clear()
-                        val unsyncedWithDriveFile = repository.getUnsyncedDeletedClips()
-                            .filter { it.driveFileId.isNotBlank() }
-                        repository.deleteAllDeletedClips()
-                        if (unsyncedWithDriveFile.isNotEmpty()) {
-                            repository.insertDeletedClips(unsyncedWithDriveFile)
-                        }
-                    }
-
-                    val contentType = detectContentType(text)
-                    val autoCategory = autoCategoryForContentType(contentType)
-                    val detectedLink = LinkMetadataManager.extractFirstLink(text)
-                    val linkUrl = detectedLink?.normalizedUrl ?: ""
-                    val linkDomain = detectedLink?.domain ?: ""
-                    val cachedMeta = resolveCachedLinkMetadataForUrl(linkUrl)
-                    val now = System.currentTimeMillis()
-
-                    val existingClip = repository.getClipByText(text)
-                    if (existingClip == null) {
-                        val newClip = ClipEntity(
-                            title = "",
-                            text = text,
-                            timestamp = now,
-                            contentType = contentType,
-                            category = autoCategory,
-                            linkUrl = linkUrl,
-                            linkDomain = cachedMeta?.domain ?: linkDomain,
-                            linkSiteName = cachedMeta?.siteName ?: "",
-                            linkTitle = cachedMeta?.title ?: "",
-                            linkDescription = cachedMeta?.description ?: "",
-                            linkFaviconBase64 = cachedMeta?.faviconBase64 ?: "",
-                            linkMetadataLoaded = cachedMeta != null,
-                            driveFileId = "",
-                            syncState = DriveSyncManager.SYNC_STATE_PENDING_UPLOAD,
-                            updatedAt = now
-                        )
-                        val insertedId = repository.insertClip(newClip)
+                    if (!isLegitimateNewCopy) {
                         lastProcessedClipText = text
                         lastProcessedClipTimestamp = clipTimestamp
-                        didModifyClips = true
-                        requestScrollToTop()
-                        if (linkUrl.isNotBlank() && cachedMeta == null) {
-                            requestLinkMetadata(linkUrl, insertedId)
-                        }
-                        onResult?.invoke(true, "Saved as $autoCategory!")
+                        return@withLock
                     } else {
-                        lastProcessedClipText = text
-                        lastProcessedClipTimestamp = clipTimestamp
-                        if (!force && !isFromListener) {
-                            // Automatic resume/foreground check found a clip that already exists in DB.
-                            // Do not modify or trigger Drive sync since no new record was added or updated.
-                            break
-                        }
+                        deletedHashesCache.remove(hash)
+                        repository.deleteDeletedClip(hash)
+                    }
+                }
+
+                // Clear stale clipboard tombstones that have already synced or had no remote Drive file
+                if (deletedHashesCache.isNotEmpty()) {
+                    deletedHashesCache.clear()
+                    val unsyncedWithDriveFile = repository.getUnsyncedDeletedClips()
+                        .filter { it.driveFileId.isNotBlank() }
+                    repository.deleteAllDeletedClips()
+                    if (unsyncedWithDriveFile.isNotEmpty()) {
+                        repository.insertDeletedClips(unsyncedWithDriveFile)
+                    }
+                }
+
+                val contentType = detectContentType(text)
+                val autoCategory = autoCategoryForContentType(contentType)
+                val detectedLink = LinkMetadataManager.extractFirstLink(text)
+                val linkUrl = detectedLink?.normalizedUrl ?: ""
+                val linkDomain = detectedLink?.domain ?: ""
+                val cachedMeta = resolveCachedLinkMetadataForUrl(linkUrl)
+                val now = System.currentTimeMillis()
+
+                val existingClip = repository.getClipByText(text)
+                if (existingClip == null) {
+                    val newClip = ClipEntity(
+                        title = "",
+                        text = text,
+                        timestamp = now,
+                        contentType = contentType,
+                        category = autoCategory,
+                        linkUrl = linkUrl,
+                        linkDomain = cachedMeta?.domain ?: linkDomain,
+                        linkSiteName = cachedMeta?.siteName ?: "",
+                        linkTitle = cachedMeta?.title ?: "",
+                        linkDescription = cachedMeta?.description ?: "",
+                        linkFaviconBase64 = cachedMeta?.faviconBase64 ?: "",
+                        linkMetadataLoaded = cachedMeta != null,
+                        driveFileId = "",
+                        syncState = DriveSyncManager.SYNC_STATE_PENDING_UPLOAD,
+                        updatedAt = now
+                    )
+                    val insertedId = repository.insertClip(newClip)
+                    lastProcessedClipText = text
+                    lastProcessedClipTimestamp = clipTimestamp
+                    didModifyClips = true
+                    requestScrollToTop()
+                    if (linkUrl.isNotBlank() && cachedMeta == null) {
+                        requestLinkMetadata(linkUrl, insertedId)
+                    }
+                    onResult?.invoke(true, "Saved as $autoCategory!")
+                } else {
+                    lastProcessedClipText = text
+                    lastProcessedClipTimestamp = clipTimestamp
+                    if (force || isFromListener) {
                         val updatedClip = existingClip.copy(
                             contentType = contentType,
                             category = if (existingClip.category.isBlank() || existingClip.category.equals("General", ignoreCase = true)) {
@@ -772,7 +732,6 @@ class ClipboardViewModel(
                             onResult?.invoke(true, "Clip moved to top!")
                         }
                     }
-                    break
                 }
             }
             if (!didModifyClips && force) {
@@ -796,9 +755,17 @@ class ClipboardViewModel(
         }
     }
 
-    fun saveManualClip(title: String = "", text: String, category: String = "") {
+    fun saveManualClip(
+        title: String = "",
+        text: String,
+        category: String = "",
+        onSaved: (() -> Unit)? = null
+    ) {
         val trimmedText = text.trim()
         if (trimmedText.isBlank()) return
+        val trimmedTitle = title.trim()
+        lastProcessedClipText = trimmedText
+        lastProcessedClipTimestamp = System.currentTimeMillis()
         viewModelScope.launch {
             clipboardMutex.withLock {
                 val hash = computeContentFingerprint(trimmedText)
@@ -824,31 +791,63 @@ class ClipboardViewModel(
                 val cachedMeta = resolveCachedLinkMetadataForUrl(linkUrl)
                 val now = System.currentTimeMillis()
 
-                val newClip = ClipEntity(
-                    title = title.trim(),
-                    text = trimmedText,
-                    timestamp = now,
-                    contentType = contentType,
-                    category = resolvedCategory,
-                    linkUrl = linkUrl,
-                    linkDomain = cachedMeta?.domain ?: linkDomain,
-                    linkSiteName = cachedMeta?.siteName ?: "",
-                    linkTitle = cachedMeta?.title ?: "",
-                    linkDescription = cachedMeta?.description ?: "",
-                    linkFaviconBase64 = cachedMeta?.faviconBase64 ?: "",
-                    linkMetadataLoaded = cachedMeta != null,
-                    driveFileId = "",
-                    syncState = DriveSyncManager.SYNC_STATE_PENDING_UPLOAD,
-                    updatedAt = now
-                )
-                val insertedId = repository.insertClip(newClip)
-                lastProcessedClipText = trimmedText
-                lastProcessedClipTimestamp = now
-                requestScrollToTop()
-                if (linkUrl.isNotBlank() && cachedMeta == null) {
-                    requestLinkMetadata(linkUrl, insertedId)
+                val existingClip = repository.getClipByText(trimmedText)
+                if (existingClip == null) {
+                    val newClip = ClipEntity(
+                        title = trimmedTitle,
+                        text = trimmedText,
+                        timestamp = now,
+                        contentType = contentType,
+                        category = resolvedCategory,
+                        linkUrl = linkUrl,
+                        linkDomain = cachedMeta?.domain ?: linkDomain,
+                        linkSiteName = cachedMeta?.siteName ?: "",
+                        linkTitle = cachedMeta?.title ?: "",
+                        linkDescription = cachedMeta?.description ?: "",
+                        linkFaviconBase64 = cachedMeta?.faviconBase64 ?: "",
+                        linkMetadataLoaded = cachedMeta != null,
+                        driveFileId = "",
+                        syncState = DriveSyncManager.SYNC_STATE_PENDING_UPLOAD,
+                        updatedAt = now
+                    )
+                    val insertedId = repository.insertClip(newClip)
+                    lastProcessedClipText = trimmedText
+                    lastProcessedClipTimestamp = now
+                    requestScrollToTop()
+                    if (linkUrl.isNotBlank() && cachedMeta == null) {
+                        requestLinkMetadata(linkUrl, insertedId)
+                    }
+                } else {
+                    val updatedClip = existingClip.copy(
+                        title = trimmedTitle.ifBlank { existingClip.title },
+                        text = trimmedText,
+                        timestamp = now,
+                        contentType = contentType,
+                        category = resolvedCategory,
+                        linkUrl = linkUrl.ifBlank { existingClip.linkUrl },
+                        linkDomain = cachedMeta?.domain ?: linkDomain.ifBlank { existingClip.linkDomain },
+                        linkSiteName = cachedMeta?.siteName ?: existingClip.linkSiteName,
+                        linkTitle = cachedMeta?.title ?: existingClip.linkTitle,
+                        linkDescription = cachedMeta?.description ?: existingClip.linkDescription,
+                        linkFaviconBase64 = cachedMeta?.faviconBase64 ?: existingClip.linkFaviconBase64,
+                        linkMetadataLoaded = existingClip.linkMetadataLoaded || cachedMeta != null,
+                        syncState = if (existingClip.driveFileId.isNotBlank()) {
+                            DriveSyncManager.SYNC_STATE_PENDING_UPDATE
+                        } else {
+                            DriveSyncManager.SYNC_STATE_PENDING_UPLOAD
+                        },
+                        updatedAt = now
+                    )
+                    repository.updateClip(updatedClip)
+                    lastProcessedClipText = trimmedText
+                    lastProcessedClipTimestamp = now
+                    requestScrollToTop()
+                    if (linkUrl.isNotBlank() && !updatedClip.linkMetadataLoaded) {
+                        requestLinkMetadata(linkUrl, existingClip.id)
+                    }
                 }
             }
+            onSaved?.invoke()
             if (driveSyncEnabled.value) {
                 triggerAutoDriveSync(throttled = false)
             }

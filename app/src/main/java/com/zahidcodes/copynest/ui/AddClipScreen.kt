@@ -142,8 +142,15 @@ fun AddClipScreen(
         }
     }
 
+    var isSaving by remember { mutableStateOf(false) }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+
     val saveNoteAction = {
-        if (textContent.isNotBlank()) {
+        if (!isSaving && textContent.isNotBlank()) {
+            isSaving = true
+            focusManager.clearFocus()
+            keyboardController?.hide()
             val finalCat = if (!hasManualCategory) {
                 viewModel.detectCategoryForText(textContent)
             } else {

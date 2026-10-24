@@ -333,17 +333,19 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `home screen renders CopyNest brand header, Your clips heading, filter pills, seeded clip cards, and no bottom navigation`() {
+    fun `home screen renders CopyNest brand header, Your clips heading, filter pills, no preadded template notes, and adds notes smoothly`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val db = ClipDatabase.getDatabase(context)
         val prefs = com.zahidcodes.copynest.data.UserPreferences(context)
+        val clipboardManager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboardManager.setPrimaryClip(ClipData.newPlainText("empty", ""))
         runBlocking {
             db.clipDao().deleteAllClips()
             db.clipDao().deleteAllDeletedClips()
             prefs.setHasSeededDefaultClips(false)
         }
 
-        val viewModel = ClipboardViewModel(context, seedDefaultClipsIfFirstLaunch = true)
+        val viewModel = ClipboardViewModel(context, seedDefaultClipsIfFirstLaunch = false)
         for (i in 0 until 6) {
             shadowOf(Looper.getMainLooper()).idle()
             Thread.sleep(60)
@@ -377,12 +379,23 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("filter_chip_recent").assertIsDisplayed()
         composeTestRule.onNodeWithTag("add_clip_fab").assertIsDisplayed()
 
-        val seededClips = runBlocking { db.clipDao().getAllClipsList() }
-        assertTrue("Expected default clips to be seeded on first launch", seededClips.size >= 4)
-        assertTrue(seededClips.any { it.title == "Study Notes" && it.isPinned })
-        assertTrue(seededClips.any { it.title == "Website Link" })
-        assertTrue(seededClips.any { it.title == "Meeting Points" })
-        assertTrue(seededClips.any { it.title == "Code Snippet" })
+        val initialClips = runBlocking { db.clipDao().getAllClipsList() }
+        assertEquals("Expected 0 pre-added template notes on launch", 0, initialClips.size)
+
+        // Adding a new note works smoothly and immediately persists
+        viewModel.saveManualClip(
+            title = "Smooth Custom Note",
+            text = "Custom note added smoothly by user",
+            category = "Work"
+        )
+        for (i in 0 until 5) {
+            shadowOf(Looper.getMainLooper()).idle()
+            Thread.sleep(50)
+        }
+        val clipsAfterAdd = runBlocking { db.clipDao().getAllClipsList() }
+        assertEquals("Expected newly added note to be saved smoothly", 1, clipsAfterAdd.size)
+        assertEquals("Smooth Custom Note", clipsAfterAdd.first().title)
+        assertEquals("Custom note added smoothly by user", clipsAfterAdd.first().text)
     }
 
     @Test

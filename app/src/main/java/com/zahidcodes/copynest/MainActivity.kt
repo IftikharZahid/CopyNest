@@ -71,7 +71,7 @@ class MainActivity : ComponentActivity() {
             val viewModel = remember {
                 ClipboardViewModel(
                     context = context.applicationContext,
-                    seedDefaultClipsIfFirstLaunch = true
+                    seedDefaultClipsIfFirstLaunch = false
                 ).also {
                     clipboardViewModel = it
                 }
