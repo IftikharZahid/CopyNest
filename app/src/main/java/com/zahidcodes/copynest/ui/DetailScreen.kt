@@ -349,10 +349,15 @@ fun DetailScreen(
             ) {
                 Surface(
                     shape = RoundedCornerShape(20.dp),
-                    color = pillUnselectedBg,
+                    color = cardBgColor,
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = cardBorderColor
+                    ),
+                    shadowElevation = if (isDark) 0.dp else 1.dp,
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp)
+                        .height(38.dp)
                 ) {
                     BasicTextField(
                         value = editedTitle,

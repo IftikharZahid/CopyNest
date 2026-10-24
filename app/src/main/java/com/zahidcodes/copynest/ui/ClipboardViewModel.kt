@@ -80,6 +80,12 @@ class ClipboardViewModel(
         initialValue = false
     )
 
+    val driveAutoSyncOnAddUpdate: StateFlow<Boolean> = userPreferences.driveAutoSyncOnAddUpdateFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = true
+    )
+
     val driveAccountEmail: StateFlow<String> = userPreferences.driveAccountEmailFlow.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -100,6 +106,24 @@ class ClipboardViewModel(
 
     private val _driveSyncStatus = MutableStateFlow<DriveSyncStatus>(DriveSyncStatus.Disconnected)
     val driveSyncStatus: StateFlow<DriveSyncStatus> = _driveSyncStatus.asStateFlow()
+
+    val pendingDriveChangesCount: StateFlow<Int> = repository.allClips.map { allClips ->
+        allClips.count {
+            it.driveFileId.isBlank() ||
+                it.syncState == DriveSyncManager.SYNC_STATE_PENDING_UPLOAD ||
+                it.syncState == DriveSyncManager.SYNC_STATE_PENDING_UPDATE
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = 0
+    )
+
+    val hasPendingDriveChanges: StateFlow<Boolean> = pendingDriveChangesCount.map { it > 0 }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = false
+    )
 
     private val _themeMode = MutableStateFlow("SYSTEM")
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
@@ -274,10 +298,6 @@ class ClipboardViewModel(
             } finally {
                 initialDatabaseLoadComplete.complete(Unit)
             }
-
-            if (userPreferences.isDriveSyncEnabled()) {
-                triggerAutoDriveSync(throttled = false)
-            }
         }
         try {
             val clipboardManager = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
@@ -375,9 +395,6 @@ class ClipboardViewModel(
         if (hasCompletedInitialHomeLoad) {
             _isLoading.value = false
             checkClipboardAndSave(context, force = false, isFromListener = false)
-            if (driveSyncEnabled.value) {
-                triggerAutoDriveSync(throttled = true)
-            }
             return
         }
         viewModelScope.launch {
@@ -392,18 +409,12 @@ class ClipboardViewModel(
             hasCompletedInitialHomeLoad = true
             _isLoading.value = false
             requestScrollToTop()
-            if (driveSyncEnabled.value) {
-                triggerAutoDriveSync(throttled = true)
-            }
         }
     }
 
     fun onAppForegrounded(context: Context) {
         requestScrollToTop()
         checkClipboardAndSave(context, force = false, isFromListener = false)
-        if (driveSyncEnabled.value) {
-            triggerAutoDriveSync(throttled = true)
-        }
     }
 
     fun setSearchQuery(query: String) {
@@ -469,14 +480,24 @@ class ClipboardViewModel(
         }
     }
 
+    fun setDriveAutoSyncOnAddUpdate(enabled: Boolean) {
+        viewModelScope.launch {
+            userPreferences.setDriveAutoSyncOnAddUpdate(enabled)
+            if (enabled && userPreferences.isDriveSyncEnabled() && hasPendingDriveChanges.value) {
+                syncWithGoogleDriveSuspend(isManual = false, onComplete = null)
+            }
+        }
+    }
+
     private fun triggerAutoDriveSync(throttled: Boolean = false) {
-        if (!driveSyncEnabled.value) return
+        if (!driveSyncEnabled.value || !driveAutoSyncOnAddUpdate.value) return
         val now = System.currentTimeMillis()
         if (throttled && (now - lastAutoDriveSyncTimestamp) < 4_000L) {
             return
         }
         lastAutoDriveSyncTimestamp = now
         viewModelScope.launch {
+            if (!userPreferences.isDriveAutoSyncOnAddUpdateEnabled()) return@launch
             syncWithGoogleDriveSuspend(isManual = false, onComplete = null)
         }
     }
@@ -714,6 +735,11 @@ class ClipboardViewModel(
                     } else {
                         lastProcessedClipText = text
                         lastProcessedClipTimestamp = clipTimestamp
+                        if (!force && !isFromListener) {
+                            // Automatic resume/foreground check found a clip that already exists in DB.
+                            // Do not modify or trigger Drive sync since no new record was added or updated.
+                            break
+                        }
                         val updatedClip = existingClip.copy(
                             contentType = contentType,
                             category = if (existingClip.category.isBlank() || existingClip.category.equals("General", ignoreCase = true)) {
@@ -854,6 +880,7 @@ class ClipboardViewModel(
         val trimmedText = newText.trim()
         if (trimmedText.isBlank()) return
         viewModelScope.launch {
+            var didUpdateRecord = false
             clipboardMutex.withLock {
                 val hash = computeContentFingerprint(trimmedText)
                 if (deletedHashesCache.remove(hash)) {
@@ -872,6 +899,15 @@ class ClipboardViewModel(
                 } else {
                     newCategory
                 }
+
+                val hasActualChanges = clip.title.trim() != newTitle.trim() ||
+                    clip.text.trim() != trimmedText ||
+                    !clip.category.equals(resolvedCategory, ignoreCase = true)
+
+                if (!hasActualChanges) {
+                    return@withLock
+                }
+
                 val detectedLink = LinkMetadataManager.extractFirstLink(trimmedText)
                 val linkUrl = detectedLink?.normalizedUrl ?: ""
                 val linkDomain = detectedLink?.domain ?: ""
@@ -920,13 +956,14 @@ class ClipboardViewModel(
                     updatedAt = now
                 )
                 repository.updateClip(updated)
+                didUpdateRecord = true
                 lastProcessedClipText = trimmedText
                 lastProcessedClipTimestamp = now
                 if (linkUrl.isNotBlank() && !updated.linkMetadataLoaded) {
                     requestLinkMetadata(linkUrl, clip.id)
                 }
             }
-            if (driveSyncEnabled.value) {
+            if (didUpdateRecord && driveSyncEnabled.value) {
                 triggerAutoDriveSync(throttled = false)
             }
         }

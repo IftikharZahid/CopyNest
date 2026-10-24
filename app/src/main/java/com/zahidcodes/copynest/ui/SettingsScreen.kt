@@ -67,10 +67,13 @@ fun SettingsScreen(
     val autoCapture by viewModel.autoCapture.collectAsState()
     val themeMode by viewModel.themeMode.collectAsState()
     val driveSyncEnabled by viewModel.driveSyncEnabled.collectAsState()
+    val driveAutoSyncOnAddUpdate by viewModel.driveAutoSyncOnAddUpdate.collectAsState()
     val driveAccountEmail by viewModel.driveAccountEmail.collectAsState()
     val driveLastSyncTime by viewModel.driveLastSyncTime.collectAsState()
     val driveLastSyncSummary by viewModel.driveLastSyncSummary.collectAsState()
     val driveSyncStatus by viewModel.driveSyncStatus.collectAsState()
+    val hasPendingDriveChanges by viewModel.hasPendingDriveChanges.collectAsState()
+    val pendingDriveChangesCount by viewModel.pendingDriveChangesCount.collectAsState()
     val isSystemDark = isSystemInDarkTheme()
 
     var showClearConfirm by remember { mutableStateOf(false) }
@@ -297,7 +300,7 @@ fun SettingsScreen(
                                     fontSize = 11.sp,
                                     lineHeight = 14.sp
                                 ),
-                                color = MaterialTheme.colorScheme.outline
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                         Switch(
@@ -411,12 +414,12 @@ fun SettingsScreen(
 
                     if (!driveSyncEnabled) {
                         Text(
-                            text = "Please connect your Google Drive account before uploading clipboard contents. Copy Nest will create or reuse the \"${DriveSyncManager.COPY_NEST_FOLDER_NAME}\" folder for two-way sync.",
+                            text = "Please connect your Google Drive account before uploading clipboard contents. Once connected, Copy Nest syncs automatically only when a new record is added or an existing record is updated.",
                             style = MaterialTheme.typography.bodySmall.copy(
                                 fontSize = 11.sp,
                                 lineHeight = 14.5.sp
                             ),
-                            color = MaterialTheme.colorScheme.outline,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.testTag("drive_connect_prompt_text")
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -488,7 +491,7 @@ fun SettingsScreen(
                                     is DriveSyncStatus.Error -> st.errorMessage
                                     is DriveSyncStatus.NeedsConsent -> st.message
                                     else -> {
-                                        val summary = driveLastSyncSummary.ifBlank { "Two-way sync active" }
+                                        val summary = driveLastSyncSummary.ifBlank { "Auto-syncs on new or updated records" }
                                         if (driveLastSyncTime > 0L) {
                                             val formattedTime = remember(driveLastSyncTime) {
                                                 SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
@@ -538,49 +541,83 @@ fun SettingsScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
+                        // Modern "Auto on Add / Update" toggle switch row matching "Auto-capture on resume"
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    viewModel.setDriveAutoSyncOnAddUpdate(!driveAutoSyncOnAddUpdate)
+                                }
+                                .padding(vertical = 2.dp)
+                                .testTag("drive_auto_sync_row"),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Button(
-                                onClick = {
-                                    viewModel.syncWithGoogleDrive(isManual = true) { _, message ->
-                                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                enabled = driveSyncStatus !is DriveSyncStatus.Syncing,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(34.dp)
-                                    .testTag("drive_sync_now_button"),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                            ) {
-                                Icon(Icons.Outlined.Sync, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Sync Now", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    viewModel.disconnectGoogleDrive {
-                                        Toast.makeText(context, "Disconnected from Google Drive", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(34.dp)
-                                    .testTag("drive_disconnect_button"),
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.error
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Auto on Add / Update",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 12.5.sp
+                                    )
                                 )
-                            ) {
-                                Icon(Icons.Outlined.LinkOff, contentDescription = null, modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Disconnect", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = if (driveAutoSyncOnAddUpdate) {
+                                        "Automatically update records on Google Drive when added or edited."
+                                    } else {
+                                        "Auto-sync is off. Records will not update on Google Drive when added or edited."
+                                    },
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontSize = 11.sp,
+                                        lineHeight = 14.sp
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
+                            Switch(
+                                checked = driveAutoSyncOnAddUpdate,
+                                onCheckedChange = { enabled ->
+                                    viewModel.setDriveAutoSyncOnAddUpdate(enabled)
+                                },
+                                thumbContent = if (driveAutoSyncOnAddUpdate) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(11.dp)
+                                        )
+                                    }
+                                } else null,
+                                modifier = Modifier
+                                    .scale(0.75f)
+                                    .height(26.dp)
+                                    .testTag("drive_auto_sync_switch")
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.disconnectGoogleDrive {
+                                    Toast.makeText(context, "Disconnected from Google Drive", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(34.dp)
+                                .testTag("drive_disconnect_button"),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
+                        ) {
+                            Icon(Icons.Outlined.LinkOff, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Disconnect", style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp))
                         }
                     }
                 }
@@ -615,7 +652,7 @@ fun SettingsScreen(
                         Text(
                             text = activeThemeLabel,
                             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                            color = MaterialTheme.colorScheme.outline
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -693,7 +730,7 @@ fun SettingsScreen(
                     Text(
                         text = "Export notes to a local text file or import them back.",
                         style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
-                        color = MaterialTheme.colorScheme.outline
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(
@@ -902,7 +939,7 @@ fun SettingsScreen(
                             Text(
                                 text = "iftikharzahid.me",
                                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                color = MaterialTheme.colorScheme.outline,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.clickable {
                                     try {
                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://iftikharzahid.me"))
@@ -1140,13 +1177,13 @@ fun SettingsScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
-                        text = "Connect your Google Drive account to enable two-way clipboard synchronization:",
+                        text = "Connect your Google Drive account to enable automatic clipboard synchronization:",
                         style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
                     )
                     Text(
                         text = "• Reuses or creates the \"${DriveSyncManager.COPY_NEST_FOLDER_NAME}\" folder in your Google Drive.\n" +
-                            "• Downloads existing text files from \"${DriveSyncManager.COPY_NEST_FOLDER_NAME}\" into Copy Nest.\n" +
-                            "• Uploads your local clipboard records as .txt files and keeps both sides synchronized without duplicates.",
+                            "• Downloads existing text files from \"${DriveSyncManager.COPY_NEST_FOLDER_NAME}\" into Copy Nest on initial connect.\n" +
+                            "• Automatically syncs only when a new record is added or an existing record is updated.",
                         style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

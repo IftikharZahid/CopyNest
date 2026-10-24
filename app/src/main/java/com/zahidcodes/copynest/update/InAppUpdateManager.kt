@@ -265,10 +265,14 @@ class GooglePlayInAppUpdateDataSource(
     ): Boolean {
         val rawInfo = snapshot.rawAppUpdateInfo ?: return false
         val activityLauncher = launcher ?: return false
-        if (!snapshot.isImmediateAllowed) return false
+        val updateType = when {
+            snapshot.isImmediateAllowed -> AppUpdateType.IMMEDIATE
+            snapshot.isFlexibleAllowed -> AppUpdateType.FLEXIBLE
+            else -> return false
+        }
 
         return try {
-            val options = AppUpdateOptions.newBuilder(AppUpdateType.IMMEDIATE)
+            val options = AppUpdateOptions.newBuilder(updateType)
                 .setAllowAssetPackDeletion(false)
                 .build()
             appUpdateManager.startUpdateFlowForResult(
@@ -430,7 +434,7 @@ class InAppUpdateManager(
                     }
 
                     UpdateRequirement.OPTIONAL -> {
-                        if (snapshot.isImmediateAllowed && isUserInitiatedRetry) {
+                        if ((snapshot.isImmediateAllowed || snapshot.isFlexibleAllowed) && isUserInitiatedRetry) {
                             launchImmediateUpdateFlow(snapshot, launcher)
                         } else {
                             _uiState.value = SplashUpdateUiState.OptionalUpdatePrompt(
@@ -474,7 +478,7 @@ class InAppUpdateManager(
                                 }
                             )
                             if (snapshot.updateAvailability == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS &&
-                                snapshot.isImmediateAllowed &&
+                                (snapshot.isImmediateAllowed || snapshot.isFlexibleAllowed) &&
                                 !isImmediateFlowActive
                             ) {
                                 launchImmediateUpdateFlow(snapshot, launcher)
@@ -494,7 +498,7 @@ class InAppUpdateManager(
                                 title = "Update Required",
                                 message = "A newer version of CopyNest is required to continue. Please complete the update to access the app.",
                                 availableVersionCode = targetVersion,
-                                canRetryInApp = snapshot.isImmediateAllowed,
+                                canRetryInApp = snapshot.isImmediateAllowed || snapshot.isFlexibleAllowed,
                                 showOpenPlayStore = true
                             )
                             return@launch
@@ -503,7 +507,7 @@ class InAppUpdateManager(
                         val isAvailableOnPlay =
                             (snapshot.updateAvailability == UpdateAvailability.UPDATE_AVAILABLE ||
                                 snapshot.updateAvailability == UpdateAvailability.DEVELOPER_TRIGGERED_UPDATE_IN_PROGRESS) &&
-                                snapshot.isImmediateAllowed
+                                (snapshot.isImmediateAllowed || snapshot.isFlexibleAllowed)
 
                         if (isAvailableOnPlay) {
                             launchImmediateUpdateFlow(snapshot, launcher)

@@ -48,6 +48,7 @@
 # -----------------------------------------------------------------------------
 # Moshi
 # -----------------------------------------------------------------------------
+-dontwarn com.squareup.moshi.**
 # Keep Moshi core classes
 -keep class com.squareup.moshi.** { *; }
 -keep interface com.squareup.moshi.** { *; }
@@ -100,9 +101,12 @@
 }
 
 # -----------------------------------------------------------------------------
-# Google Play Services Auth & Drive Sync
+# Google Play Services Auth, Drive Sync & In-App Updates
 # -----------------------------------------------------------------------------
 -keep class com.google.android.gms.auth.** { *; }
 -keep class com.google.android.gms.common.** { *; }
 -dontwarn com.google.android.gms.**
+-keep class com.google.android.play.core.** { *; }
+-keep interface com.google.android.play.core.** { *; }
+-dontwarn com.google.android.play.core.**
 

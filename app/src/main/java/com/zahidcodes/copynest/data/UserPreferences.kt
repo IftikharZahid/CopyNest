@@ -22,6 +22,7 @@ class UserPreferences(private val context: Context) {
         val HAS_SEEDED_DEFAULT_CLIPS = booleanPreferencesKey("has_seeded_default_clips")
 
         val DRIVE_SYNC_ENABLED = booleanPreferencesKey("drive_sync_enabled")
+        val DRIVE_AUTO_SYNC_ON_ADD_UPDATE = booleanPreferencesKey("drive_auto_sync_on_add_update")
         val DRIVE_ACCOUNT_EMAIL = stringPreferencesKey("drive_account_email")
         val DRIVE_FOLDER_ID = stringPreferencesKey("drive_folder_id")
         val DRIVE_LAST_SYNC_TIME = longPreferencesKey("drive_last_sync_time")
@@ -51,6 +52,11 @@ class UserPreferences(private val context: Context) {
     val driveSyncEnabledFlow: Flow<Boolean> = context.dataStore.data
         .map { preferences ->
             preferences[DRIVE_SYNC_ENABLED] ?: false
+        }
+
+    val driveAutoSyncOnAddUpdateFlow: Flow<Boolean> = context.dataStore.data
+        .map { preferences ->
+            preferences[DRIVE_AUTO_SYNC_ON_ADD_UPDATE] ?: true
         }
 
     val driveAccountEmailFlow: Flow<String> = context.dataStore.data
@@ -135,10 +141,27 @@ class UserPreferences(private val context: Context) {
         }
     }
 
+    suspend fun isDriveAutoSyncOnAddUpdateEnabled(): Boolean {
+        return try {
+            driveAutoSyncOnAddUpdateFlow.first()
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    suspend fun setDriveAutoSyncOnAddUpdate(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[DRIVE_AUTO_SYNC_ON_ADD_UPDATE] = enabled
+        }
+    }
+
     suspend fun setDriveSyncConnection(enabled: Boolean, accountEmail: String, folderId: String = "") {
         context.dataStore.edit { preferences ->
             preferences[DRIVE_SYNC_ENABLED] = enabled
             preferences[DRIVE_ACCOUNT_EMAIL] = accountEmail
+            if (enabled && preferences[DRIVE_AUTO_SYNC_ON_ADD_UPDATE] == null) {
+                preferences[DRIVE_AUTO_SYNC_ON_ADD_UPDATE] = true
+            }
             if (folderId.isNotBlank() || !enabled) {
                 preferences[DRIVE_FOLDER_ID] = folderId
             }
